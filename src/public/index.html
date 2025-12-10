@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Compteur de Messages</title>
+  <style>
+    body { font-family: sans-serif; display: flex; gap: 20px; padding: 20px; }
+    
+    /* Zone de gauche : Le Chat */
+    #chat-zone { flex: 2; border: 1px solid #ccc; padding: 10px; height: 80vh; display: flex; flex-direction: column; }
+    #messages { list-style-type: none; margin: 0; padding: 0; flex-grow: 1; overflow-y: auto; }
+    #messages li { padding: 5px 10px; }
+    #messages li:nth-child(odd) { background: #eee; }
+    form { display: flex; margin-top: 10px; }
+    input { flex-grow: 1; padding: 10px; }
+    button { padding: 10px; cursor: pointer; }
+
+    /* Zone de droite : Les Stats */
+    #stats-zone { flex: 1; background: #333; color: white; padding: 20px; border-radius: 8px; }
+    #score-list { list-style: none; padding: 0; }
+    #score-list li { margin-bottom: 10px; font-size: 1.2em; border-bottom: 1px solid #555; }
+    
+    #btn-terminer {
+        background-color: #e74c3c; color: white; border: none; 
+        padding: 15px; width: 100%; font-size: 1.2em; margin-top: 20px; cursor: pointer;
+    }
+    #btn-terminer:hover { background-color: #c0392b; }
+  </style>
+</head>
+<body>
+
+  <div id="chat-zone">
+      <h3>Discussion</h3>
+      <ul id="messages"></ul>
+      <form id="form" action="">
+        <input id="input" autocomplete="off" placeholder="Écris un message..." />
+        <button>Envoyer</button>
+      </form>
+  </div>
+
+  <div id="stats-zone">
+      <h3>Compteur de messages</h3>
+      <ul id="score-list">
+          </ul>
+
+      <button id="btn-terminer">💾 TERMINER & SAUVEGARDER</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/client.js"></script>
+
+</body>
+</html>
