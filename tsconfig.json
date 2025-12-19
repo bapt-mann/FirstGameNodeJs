@@ -1,11 +1,17 @@
 {
   "compilerOptions": {
-    "target": "es6",            // Version de JS en sortie
-    "module": "commonjs",       // Format de module pour Node
-    "moduleResolution": "node",       
-    "outDir": "./dist",         // Où le code compilé ira
-    "rootDir": "./",            // Où est ton code source
-    "strict": true,             // Active le mode strict (typage fort)
-    "esModuleInterop": true     // Meilleure compatibilité des imports
-  }
+    "target": "es6",
+    "module": "commonjs",       // INDISPENSABLE pour Node.js
+    "moduleResolution": "node",
+    "outDir": "./dist",         // Le serveur compilé ira dans dist/
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    
+    // On enlève "dom" pour éviter d'utiliser 'document' par erreur côté serveur
+    "lib": ["es6"]              
+  },
+  "include": ["src/**/*", "server.ts"], // Tout le serveur
+  "exclude": ["public/**/*"]            // On NE touche PAS au client
 }

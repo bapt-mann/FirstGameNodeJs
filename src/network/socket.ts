@@ -7,6 +7,11 @@ import {
 } from "../services/gameService";
 
 import { saveScore } from "../services/scoreService"; 
+import { Debug } from "../models/Debug";
+
+var path = require('path');
+var scriptName = path.basename(__filename);
+
 
 // 1. On définit une Interface pour savoir ce qu'est un Joueur
 // Cela permet à TS de savoir que 'joueur.count' existe.
@@ -24,7 +29,8 @@ interface PlayersList {
 export default function setupSocket(io: Server) {
     
   io.on("connection", (socket: Socket) => {
-    console.log("Nouveau joueur :", socket.id);
+    let message:string = "Nouveau joueur : " + socket.id;
+    Debug.log(scriptName, message, 0);
 
     // On précise que 'pseudo' doit être une string
     socket.on("nouveau_joueur", (pseudo: string) => {
@@ -38,6 +44,9 @@ export default function setupSocket(io: Server) {
       // On récupère la liste et on dit à TS que c'est bien notre type PlayersList
       const players = getPlayers() as PlayersList;
       const p = players[socket.id];
+
+      let message:string = "Envoi à tout le monde du message de " + socket.id + " (" + p.pseudo + ")";
+      Debug.log(scriptName, message, 0);
 
       // Sécurité : on vérifie que le joueur existe bien avant d'envoyer
       if (p) {
@@ -56,14 +65,20 @@ export default function setupSocket(io: Server) {
             if (err) {
               socket.emit("confirmation_save", "Erreur lors de la sauvegarde.");
               console.error(err);
+              message = "Erreur lors de la sauvegarde du score de " + socket.id + " (" + joueur.pseudo + ") : " + err.message;
+              Debug.log(scriptName, message, 2);
             } else {
               socket.emit("confirmation_save", "Score sauvegardé !");
+              message = "Score sauvegardé pour " + socket.id + " (" + joueur.pseudo + ")";
+              Debug.log(scriptName, message, 0);
             }
           });
       }
     });
 
     socket.on("disconnect", () => {
+      let message:string = "Joueur déconnecté : " + socket.id;
+      Debug.log(scriptName, message, 1);
       removePlayer(socket.id);
       io.emit("maj_scores", getPlayers());
     });

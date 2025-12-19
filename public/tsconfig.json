@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es6",
+    "module": "es2015",
+    "moduleResolution": "node",
+    
+    // CORRECTION ICI :
+    // On remonte d'un cran pour englober "public" ET "src"
+    "rootDir": "../",
+    
+    // On envoie tout proprement dans le dossier dist à la racine
+    "outDir": "../dist",
+    
+    "strict": true,
+    "lib": ["es6", "dom"],
+    "skipLibCheck": true
+  },
+  "include": ["client.ts", "../src/models/**/*"]
+}

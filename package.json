@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "ts-node server.ts",
+    "build:server": "tsc",
+    "build:client": "tsc -p public/tsconfig.json",
+    "build": "npm run build:server && npm run build:client",
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +23,7 @@
     "@types/node": "^25.0.0",
     "@types/socket.io": "^3.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "undici-types": "^7.16.0"
   }
 }

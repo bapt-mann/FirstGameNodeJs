@@ -13,8 +13,18 @@ const io = new Server(server);
 // On lance la configuration des sockets
 setupSocket(io);
 
-// Gestion des fichiers statiques
-// Note : Si ton server.ts est à la racine, 'src/public' est correct.
-// Si tu as déplacé ce fichier DANS le dossier src, il faudra utiliser path.join(__dirname, 'public')
-app.use(express.static(path.join(__dirname, 'src/public')));
+// 1. On dit à Express : "Si on te demande un fichier, regarde d'abord dans 'dist'"
+// Cela permet de trouver : /public/client.js
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// 2. On dit AUSSI : "Regarde dans 'public' (à la racine)"
+// Cela permet de trouver : style.css, images, etc. (si tu en ajoutes plus tard)
+app.use(express.static(path.join(__dirname, 'public')));
+
+// 3. La route principale qui renvoie le HTML
+app.get('/', (req, res) => {
+  // On renvoie le fichier HTML source (il n'est pas dans dist, lui)
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 server.listen(3000, () => console.log("Serveur sur http://localhost:3000"));

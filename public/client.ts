@@ -4,6 +4,9 @@ declare var io: any;
 
 const socket = io();
 
+const scriptName = "client";
+
+
 // 2. Interfaces pour définir la forme des données reçues
 interface ChatMessage {
     pseudo: string;
@@ -22,6 +25,8 @@ interface PlayersList {
 // 3. On demande le pseudo
 // prompt() peut retourner null, on assure que c'est une string
 const monPseudo: string = prompt("Quel est ton pseudo ?") || "Anonyme";
+
+
 socket.emit('nouveau_joueur', monPseudo);
 
 // 4. Éléments du DOM avec "Casting" (Typage forcé)
