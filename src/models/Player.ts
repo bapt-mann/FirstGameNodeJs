@@ -1,16 +1,17 @@
 export class Player {
 
-  public id: string;
-  public pseudo: string;
-  public count: number;
+  // 1. IDENTIFICATION
+  public socketId: string; // L'adresse temporaire (ex: "Xy9z...") pour Socket.IO
+  public dbId: number;     // L'ID unique MySQL (ex: 42) pour la BDD
+  public pseudo: string;   // "Mario"
 
-  constructor(id:string, pseudo:string) {
-    this.id = id;
+  // 2. ÉTAT DANS LE LOBBY
+  public isReady: boolean = false;   
+  public selectedCharacterIds: number[] = []; // IDs des persos choisis
+
+  constructor(socketId: string, pseudo: string, dbId: number) {
+    this.socketId = socketId;
     this.pseudo = pseudo;
-    this.count = 0;
-  }
-
-  public increment() {
-    this.count++;
+    this.dbId = dbId;
   }
 }

@@ -1,52 +1,42 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
-  <title>Compteur de Messages</title>
-  <style>
-    body { font-family: sans-serif; display: flex; gap: 20px; padding: 20px; }
-    
-    /* Zone de gauche : Le Chat */
-    #chat-zone { flex: 2; border: 1px solid #ccc; padding: 10px; height: 80vh; display: flex; flex-direction: column; }
-    #messages { list-style-type: none; margin: 0; padding: 0; flex-grow: 1; overflow-y: auto; }
-    #messages li { padding: 5px 10px; }
-    #messages li:nth-child(odd) { background: #eee; }
-    form { display: flex; margin-top: 10px; }
-    input { flex-grow: 1; padding: 10px; }
-    button { padding: 10px; cursor: pointer; }
-
-    /* Zone de droite : Les Stats */
-    #stats-zone { flex: 1; background: #333; color: white; padding: 20px; border-radius: 8px; }
-    #score-list { list-style: none; padding: 0; }
-    #score-list li { margin-bottom: 10px; font-size: 1.2em; border-bottom: 1px solid #555; }
-    
-    #btn-terminer {
-        background-color: #e74c3c; color: white; border: none; 
-        padding: 15px; width: 100%; font-size: 1.2em; margin-top: 20px; cursor: pointer;
-    }
-    #btn-terminer:hover { background-color: #c0392b; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Jeu Web Room</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-  <div id="chat-zone">
-      <h3>Discussion</h3>
-      <ul id="messages"></ul>
-      <form id="form" action="">
-        <input id="input" autocomplete="off" placeholder="Écris un message..." />
-        <button>Envoyer</button>
-      </form>
-  </div>
+    <div id="screen-login" class="screen active">
+        <h1>Bienvenue</h1>
+        <input type="text" id="pseudo-input" placeholder="Ton pseudo">
+        <button id="btn-login">Se Connecter</button>
+    </div>
 
-  <div id="stats-zone">
-      <h3>Compteur de messages</h3>
-      <ul id="score-list">
-          </ul>
+    <div id="screen-menu" class="screen">
+        <h1 id="welcome-msg">Bonjour</h1>
+        <button id="btn-create">Créer une Room</button>
+        <hr>
+        <input type="text" id="code-input" placeholder="Code (ex: A4F2)" maxlength="4" style="text-transform:uppercase">
+        <button id="btn-join">Rejoindre</button>
+        <p id="menu-error" class="error"></p>
+    </div>
 
-      <button id="btn-terminer">💾 TERMINER & SAUVEGARDER</button>
-  </div>
-
-  <script src="/socket.io/socket.io.js"></script>
-  <script type="module" src="/public/client.js"></script>
-
+    <div id="screen-lobby" class="screen">
+        <h1>Room : <span id="display-code"></span></h1>
+        <button id="btn-leave" style="background-color: #e74c3c; margin-bottom: 15px;">QUITTER LA ROOM</button>
+        <p class="success">En attente de joueurs...</p>
+        <ul id="players-list">
+        </ul>
+        <button id="btn-start-game" disabled>LANCER LA PARTIE</button>
+        <hr>
+        <h3>Compose ton équipe (Max 3)</h3>
+        <div id="characters-container" class="char-grid">
+            <!-- Les personnages seront ajoutés ici dynamiquement -->
+        </div>
+        <button id="btn-ready" disabled>JE SUIS PRÊT</button>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="module" src="/public/client.js"></script>
 </body>
 </html>

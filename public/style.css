@@ -1,0 +1,192 @@
+/* =========================================
+   1. RESET & BASE (Look sombre "Gaming")
+   ========================================= */
+:root {
+    --bg-color: #2c3e50;       /* Bleu nuit fond page */
+    --card-bg: #34495e;        /* Bleu gris fond conteneur */
+    --text-color: #ecf0f1;     /* Blanc cassé */
+    --accent-color: #3498db;   /* Bleu action */
+    --success-color: #2ecc71;  /* Vert validation */
+    --error-color: #e74c3c;    /* Rouge erreur */
+    --card-border: #7f8c8d;    /* Gris bordure */
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    display: flex;             /* Centre tout au milieu de l'écran */
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+/* =========================================
+   2. CONTENEURS (Les écrans)
+   ========================================= */
+.screen {
+    display: none; /* Caché par défaut */
+    background-color: var(--card-bg);
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    width: 90%;
+    max-width: 600px; /* Pas trop large */
+    text-align: center;
+    animation: fadeIn 0.3s ease-in-out;
+}
+
+.screen.active {
+    display: block; /* Visible quand actif */
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+h1, h3 {
+    margin-top: 0;
+    color: var(--accent-color);
+}
+
+hr {
+    border: 0;
+    height: 1px;
+    background: #566573;
+    margin: 20px 0;
+}
+
+/* =========================================
+   3. FORMULAIRES & BOUTONS
+   ========================================= */
+input[type="text"] {
+    padding: 12px;
+    border-radius: 6px;
+    border: 2px solid var(--card-border);
+    background: #2c3e50;
+    color: white;
+    font-size: 16px;
+    width: 70%;
+    margin-bottom: 10px;
+    outline: none;
+    transition: 0.3s;
+}
+
+input[type="text"]:focus {
+    border-color: var(--accent-color);
+}
+
+button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    background-color: var(--accent-color);
+    color: white;
+    transition: transform 0.1s, background-color 0.2s;
+    margin: 5px;
+}
+
+button:hover {
+    background-color: #2980b9;
+    transform: scale(1.05);
+}
+
+button:active {
+    transform: scale(0.95);
+}
+
+button:disabled {
+    background-color: #95a5a6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+#btn-ready {
+    width: 100%;
+    margin-top: 20px;
+    background-color: #7f8c8d; /* Gris par défaut */
+}
+
+#btn-ready:enabled {
+    background-color: var(--success-color); /* Vert quand prêt */
+    box-shadow: 0 0 15px rgba(46, 204, 113, 0.6); /* Effet néon */
+}
+
+/* =========================================
+   4. LISTES & MESSAGES
+   ========================================= */
+#players-list {
+    list-style: none;
+    padding: 0;
+    text-align: left;
+    background: rgba(0,0,0,0.2);
+    border-radius: 8px;
+    padding: 10px;
+}
+
+#players-list li {
+    padding: 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+#players-list li:last-child {
+    border-bottom: none;
+}
+
+.error { color: var(--error-color); font-weight: bold; }
+.success { color: var(--success-color); font-weight: bold; }
+
+/* =========================================
+   5. GRILLE DES PERSONNAGES (Le plus important)
+   ========================================= */
+.char-grid {
+    display: grid;
+    /* Créer des colonnes auto-adaptables (min 120px de large) */
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+    gap: 15px;
+    margin-top: 15px;
+}
+
+.char-card {
+    background-color: #2c3e50;
+    border: 2px solid var(--card-border);
+    border-radius: 8px;
+    padding: 15px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    user-select: none; /* Empêche de sélectionner le texte */
+}
+
+.char-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent-color);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+/* ÉTAT SÉLECTIONNÉ (Géré par JS) */
+.char-card.selected {
+    border-color: var(--success-color);
+    background-color: rgba(46, 204, 113, 0.1); /* Vert très transparent */
+    box-shadow: 0 0 10px var(--success-color);
+}
+
+.char-card strong {
+    display: block;
+    font-size: 1.1em;
+    margin-bottom: 5px;
+    color: var(--accent-color);
+}
+
+.char-card small {
+    color: #bdc3c7;
+}
+
+.char-card.selected strong {
+    color: var(--success-color);
+}
