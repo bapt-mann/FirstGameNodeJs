@@ -17,11 +17,11 @@ export class Unit {
   
   hasMoved: boolean; // Pour savoir s'il a déjà joué ce tour
 
-  constructor(id: string, name: string, ownerId: string, x: number, y: number) {
+  constructor(id: string, name: string, ownerId: string, x: number, y: number, z: number) {
     this.id = id;
     this.name = name;
     this.ownerId = ownerId;
-    this.position = { x, y };
+    this.position = { x, y, z };
     this.hp = 20;
     this.maxHp = 20;
     this.atk = 8;

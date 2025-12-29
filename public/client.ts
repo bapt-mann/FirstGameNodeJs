@@ -1,13 +1,19 @@
 declare var io: any;
 const socket = io();
 
+let myUserId: number | null = null;
 let currentTeam: number[] = [];
 
-// Éléments du DOM
+// Variable pour savoir quel étage on regarde (Caméra)
+let viewingFloor = 0; 
+let gameData: any = null; // Stockera les données reçues du serveur
+
+//#region Éléments du DOM
 const screens = {
     login: document.getElementById('screen-login')!,
     menu: document.getElementById('screen-menu')!,
-    lobby: document.getElementById('screen-lobby')!
+    lobby: document.getElementById('screen-lobby')!,
+    game: document.getElementById('game-ui')! // Écran de jeu
 };
 
 const inputs = {
@@ -16,23 +22,26 @@ const inputs = {
 };
 
 // Fonction pour changer d'écran
-function showScreen(screenName: 'login' | 'menu' | 'lobby') {
+function showScreen(screenName: 'login' | 'menu' | 'lobby' | 'game') {
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[screenName].classList.add('active');
 }
+//#endregion
 
-// --- LOGIQUE LOGIN ---
+//#region  --- LOGIQUE LOGIN ---
 document.getElementById('btn-login')?.addEventListener('click', () => {
     const pseudo = inputs.pseudo.value;
     if (pseudo) socket.emit('login', pseudo);
 });
 
 socket.on('login_success', (user: any) => {
+    myUserId = user.id;
     document.getElementById('welcome-msg')!.textContent = `Bonjour ${user.pseudo}`;
     showScreen('menu');
 });
+//#endregion
 
-// --- LOGIQUE CRÉATION ---
+//#region  --- LOGIQUE CRÉATION ---
 document.getElementById('btn-create')?.addEventListener('click', () => {
     socket.emit('create_room');
 });
@@ -44,8 +53,9 @@ socket.on('room_created', (code: string) => {
     addLog(`Vous avez créé la room ${code}`);
     socket.emit('get_characters');
 });
+//#endregion
 
-// --- LOGIQUE REJOINDRE ---
+//#region  --- LOGIQUE REJOINDRE ---
 document.getElementById('btn-join')?.addEventListener('click', () => {
     const code = inputs.code.value.toUpperCase();
     if (code) socket.emit('join_room', code);
@@ -57,13 +67,15 @@ socket.on('room_joined', (code: string) => {
     addLog(`Vous avez rejoint la room ${code}`);
     socket.emit('get_characters');
 });
+//#endregion
 
-// --- ÉVÉNEMENTS LOBBY ---
+//#region  --- ÉVÉNEMENTS LOBBY ---
 socket.on('player_arrived', (pseudo: string) => {
     addLog(`👋 ${pseudo} a rejoint la partie !`);
 });
+//#endregion
 
-// Gérer la reconnexion automatique
+//#region  Gérer la reconnexion automatique
 socket.on('reconnect_room', (data: any) => {
     console.log("Reconnexion à la room " + data.code);
     
@@ -81,8 +93,9 @@ socket.on('reconnect_room', (data: any) => {
 socket.on('error_msg', (msg: string) => {
     alert("Erreur : " + msg);
 });
+//#endregion
 
-// Helper pour afficher dans la liste
+//#region  Helper pour afficher dans la liste
 function addLog(text: string) {
     const li = document.createElement('li');
     li.textContent = text;
@@ -137,9 +150,10 @@ socket.on('team_update', (teamIds: number[]) => {
         btnReady.style.backgroundColor = "";
     }
 });
+//#endregion
 
 
-// LEAVE ROOM LOGIC
+//#region  LEAVE ROOM LOGIC
 document.getElementById('btn-leave')?.addEventListener('click', () => {
     if (confirm("Voulez-vous vraiment quitter ?")) {
         socket.emit('leave_room');
@@ -163,3 +177,100 @@ socket.on('room_closed', (reason: string) => {
     alert(reason);
     showScreen('menu');
 });
+//#endregion
+
+
+//#region  READY BUTTON LOGIC
+document.getElementById('btn-ready')?.addEventListener('click', () => {
+    socket.emit('player_ready');
+    // On grise le bouton
+    const btn = document.getElementById('btn-ready') as HTMLButtonElement;
+    btn.disabled = true;
+    btn.textContent = "En attente de l'adversaire...";
+    btn.style.backgroundColor = "orange";
+});
+
+socket.on('opponent_ready', (pseudo: string) => {
+    addLog(`⚡ ${pseudo} est prêt !`);
+});
+
+socket.on('game_start', (gameData: any) => {
+    console.log("LA PARTIE COMMENCE !", gameData);
+
+    // C'est ici qu'on change d'écran automatiquement
+    showScreen('game');
+    renderMap();
+});
+//#endregion
+
+//#region  --- LOGIQUE DE JEU ---
+
+socket.on('game_update', (game: any) => {
+    gameData = game;
+    // Par défaut, on regarde l'étage où se trouve notre première unité, ou l'étage 0
+    renderMap();
+});
+
+function renderMap() {
+    const board = document.getElementById('game-board')!;
+    board.innerHTML = ''; // On efface tout (bourrin mais simple au début)
+
+    // On récupère juste la grille de l'étage qu'on regarde
+    const floorMap = gameData.map[viewingFloor];
+
+    // Double boucle pour dessiner Y puis X
+    for (let y = 0; y < 15; y++) {
+        for (let x = 0; x < 10; x++) {
+            
+            // 1. Créer la case (Terrain)
+            const cellData = floorMap[y][x];
+            const cellDiv = document.createElement('div');
+            cellDiv.className = 'cell';
+            
+            // Appliquer le style selon le type (mur, eau...)
+            if (cellData.type === 'WALL') cellDiv.classList.add('wall');
+            if (cellData.type === 'STAIRS_UP') cellDiv.classList.add('stairs-up');
+
+            // Gestion du clic (Déplacement)
+            cellDiv.addEventListener('click', () => onCellClick(x, y, viewingFloor));
+
+            // 2. Vérifier s'il y a une unité ICI ET à cet ÉTAGE
+            const unit = gameData.units.find((u: any) => 
+                u.position.x === x && 
+                u.position.y === y && 
+                u.position.z === viewingFloor
+            );
+
+            if (unit) {
+                const unitDiv = document.createElement('div');
+                unitDiv.className = 'unit';
+                // Si c'est mon unité ou celle de l'ennemi
+                unitDiv.classList.add(unit.ownerId === myUserId ? 'me' : 'enemy');
+                
+                // (Optionnel) Ajouter une image
+                // unitDiv.style.backgroundImage = `url(${unit.spriteUrl})`;
+                
+                cellDiv.appendChild(unitDiv);
+            }
+
+            board.appendChild(cellDiv);
+        }
+    }
+    
+    document.getElementById('current-floor-display')!.innerText = (viewingFloor + 1).toString();
+}
+
+// Boutons pour changer d'étage (Caméra)
+document.getElementById('btn-floor-up')?.addEventListener('click', () => {
+    if (viewingFloor < gameData.floors - 1) {
+        viewingFloor++;
+        renderMap();
+    }
+});
+
+function onCellClick(x: number, y: number, viewingFloor: number): any {
+    console.log("You clicked on cell (" + x + ", " + y + ") on floor " + viewingFloor);
+
+}
+
+//#endregion

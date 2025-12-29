@@ -265,5 +265,41 @@ export default function setupSocket(io: Server) {
                 console.error(e);
             }
         });
+        
+        // --- 8. PRÊT / DÉBUT DE PARTIE ---
+        socket.on('player_ready', () => {
+            if (!currentRoomCode) return; // Sécurité
+
+            const game = gameManager.getGame(currentRoomCode);
+            if (!game) return;
+
+            // 1. On trouve le joueur qui a cliqué (via son socket.id)
+            const player = game.players.find(p => p.socketId === socket.id);
+            
+            if (player) {
+                player.isReady = true;
+                console.log(`Joueur ${player.pseudo} est PRÊT dans la room ${currentRoomCode}`);
+                
+                // (Optionnel) Dire à l'autre joueur que son adversaire est prêt
+                socket.to(currentRoomCode).emit('opponent_ready', player.pseudo);
+            }
+
+            // 2. VÉRIFICATION : Est-ce que TOUT LE MONDE est prêt ?
+            // Il faut 2 joueurs et que tous aient isReady = true
+            const allReady = game.players.length === 2 && game.players.every(p => p.isReady);
+
+            if (allReady) {
+                console.log(`Room ${currentRoomCode} : Tout le monde est prêt ! Lancement...`);
+                
+                // On change le statut du jeu
+                game.status = 'PLAYING';
+                
+                // IMPORTANT : Si tu n'as pas encore généré la map (les cases), fais-le ici !
+                // game.generateMap(); 
+
+                // 3. On envoie le signal de DÉPART à tout le monde
+                io.to(currentRoomCode).emit('game_start', game);
+            }
+        });
     });
 }

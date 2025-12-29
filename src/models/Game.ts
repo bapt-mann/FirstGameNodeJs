@@ -2,8 +2,8 @@ import { Player } from "./Player";
 import { Unit } from "./Unit";
 
 export class Game {
-  roomCode: string;          // ✅ AJOUT : Pour identifier la game par son code (ex: "X7B2")
-  roomDbId: number;          // ID SQL
+  roomCode: string;
+  roomDbId: number;
   
   mapWidth: number = 10;
   mapHeight: number = 10;

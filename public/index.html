@@ -28,7 +28,6 @@
         <p class="success">En attente de joueurs...</p>
         <ul id="players-list">
         </ul>
-        <button id="btn-start-game" disabled>LANCER LA PARTIE</button>
         <hr>
         <h3>Compose ton équipe (Max 3)</h3>
         <div id="characters-container" class="char-grid">
@@ -36,6 +35,17 @@
         </div>
         <button id="btn-ready" disabled>JE SUIS PRÊT</button>
     </div>
+
+    <div id="game-ui" class="screen">
+        <div class="header">
+            <h2>Étage : <span id="current-floor-display">1</span></h2>
+            <button id="btn-floor-up">▲</button>
+            <button id="btn-floor-down">▼</button>
+        </div>
+
+        <div id="game-board"></div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script type="module" src="/public/client.js"></script>
 </body>

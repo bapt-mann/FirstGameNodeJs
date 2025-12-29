@@ -143,7 +143,7 @@ button:disabled {
 .success { color: var(--success-color); font-weight: bold; }
 
 /* =========================================
-   5. GRILLE DES PERSONNAGES (Le plus important)
+   5. GRILLE DES PERSONNAGES
    ========================================= */
 .char-grid {
     display: grid;
@@ -190,3 +190,52 @@ button:disabled {
 .char-card.selected strong {
     color: var(--success-color);
 }
+
+/* =========================================
+   6. PLATEAU DE JEU
+   ========================================= */
+
+#game-board {
+    display: grid;
+    /* 10 colonnes de 50px */
+    grid-template-columns: repeat(10, 50px); 
+    /* 15 lignes de 50px */
+    grid-template-rows: repeat(15, 50px); 
+    gap: 1px; /* Petit espace pour voir la grille */
+    background-color: #000;
+    width: fit-content;
+    margin: 0 auto;
+    border: 4px solid #4a3b2a;
+}
+
+.cell {
+    width: 50px;
+    height: 50px;
+    background-color: #76c659; /* Herbe par défaut */
+    position: relative; /* Pour positionner l'unité dedans */
+    box-sizing: border-box;
+}
+
+/* Les types de terrain */
+.cell.wall { background-color: #555; } /* Mur gris */
+.cell.water { background-color: #4a90e2; } /* Eau bleue */
+.cell.stairs-up { 
+    background-color: #e67e22; 
+    background-image: url('/public/assets/stairs_up.png'); /* Plus tard */
+}
+
+/* L'unité (Le Pion) */
+.unit {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%; /* Rond pour l'instant */
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    border: 2px solid white;
+    transition: all 0.2s ease; /* Animation fluide du mouvement ! */
+    z-index: 10;
+}
+
+.unit.me { background-color: blue; }
+.unit.enemy { background-color: red; }
