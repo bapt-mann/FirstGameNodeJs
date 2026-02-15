@@ -33,5 +33,10 @@ Ce projet a été réalisé pour explorer le développement de jeux multijoueurs
 
 Ce dépôt correspond à une première itération ("FirstGame"). Il s'agit d'un prototype fonctionnel mettant en œuvre les bases du moteur de jeu et de la communication réseau.
 
+## Comment lancer le projet :
+
+git clone https://github.com/bapt-mann/FirstGameNodeJs
+se positionner sur le dossier racine du projet et lancer la commande : `npm start`
+
 ---
 *Développé par [Baptiste Boin](https://www.baptiste-boin.fr)*

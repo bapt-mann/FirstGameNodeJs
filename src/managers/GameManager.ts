@@ -8,7 +8,7 @@ class GameManager {
     createGame(roomCode: string, roomDbId: number, hostInfo: { socketId: string, pseudo: string, dbId: number }): Game {
         
         // 1. On crée l'objet Player pour le Host
-        const hostPlayer = new Player(hostInfo.socketId, hostInfo.pseudo, hostInfo.dbId);
+        const hostPlayer = new Player(hostInfo.socketId, hostInfo.pseudo, hostInfo.dbId, 1); // playerGameId = 1 pour le Host
         
         // 2. On crée la Game avec ce Host
         const newGame = new Game(roomCode, roomDbId, hostPlayer);
@@ -27,7 +27,7 @@ class GameManager {
     addPlayerToGame(roomCode: string, playerInfo: { socketId: string, pseudo: string, dbId: number }) {
         const game = this.getGame(roomCode);
         if (game) {
-            const newPlayer = new Player(playerInfo.socketId, playerInfo.pseudo, playerInfo.dbId);
+            const newPlayer = new Player(playerInfo.socketId, playerInfo.pseudo, playerInfo.dbId, 2); // playerGameId = 2 pour le second joueur
             game.addPlayer(newPlayer);
         }
     }

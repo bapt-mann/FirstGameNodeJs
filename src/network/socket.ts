@@ -208,8 +208,8 @@ export default function setupSocket(io: Server) {
             }
 
             try {
-                // data contient { unitId, x, y }
-                const updatedGame = moveUnit(game, data.unitId, data.x, data.y, socket.id);
+                // data contient { unitId, tile }
+                const updatedGame = moveUnit(game, data.unitId, data.tile, myUserId!);
                 
                 // On envoie la mise à jour à tout le monde DANS LA ROOM (via le code)
                 io.to(currentRoomCode).emit('update_game', updatedGame);
@@ -265,7 +265,7 @@ export default function setupSocket(io: Server) {
                 console.error(e);
             }
         });
-        
+
         // --- 8. PRÊT / DÉBUT DE PARTIE ---
         socket.on('player_ready', () => {
             if (!currentRoomCode) return; // Sécurité
@@ -293,11 +293,9 @@ export default function setupSocket(io: Server) {
                 
                 // On change le statut du jeu
                 game.status = 'PLAYING';
-                
-                // IMPORTANT : Si tu n'as pas encore généré la map (les cases), fais-le ici !
-                // game.generateMap(); 
 
                 // 3. On envoie le signal de DÉPART à tout le monde
+                console.log("Données de la game au départ :", game);
                 io.to(currentRoomCode).emit('game_start', game);
             }
         });

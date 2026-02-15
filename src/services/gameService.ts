@@ -1,6 +1,7 @@
 import db from "../config/db";
 import { RowDataPacket } from "mysql2";
 import { Game } from "../models/Game";
+import { Tile } from "../models/Tile";
 
 // =========================================================
 // 1. PARTIE BDD : GESTION DES PERSONNAGES
@@ -55,7 +56,7 @@ export async function toggleCharacterSelection(roomDbId: number, userId: number,
 // 2. PARTIE JEU : LOGIQUE TACTIQUE (MÉMOIRE)
 // =========================================================
 
-export function moveUnit(game: Game, unitId: string, targetX: number, targetY: number, playerId: string) {
+export function moveUnit(game: Game, unitId: string, targetTile: Tile, playerId: number) {
     const unit = game.units.find(u => u.id === unitId);
 
     // 1. Vérifications de base
@@ -65,16 +66,16 @@ export function moveUnit(game: Game, unitId: string, targetX: number, targetY: n
     // (Tu pourras ajouter ici la logique de 'hasMoved' plus tard)
     // if (unit.hasMoved) throw new Error("Cette unité a déjà bougé.");
     
-    // 2. Vérifier la distance (Maths simples : |x1-x2| + |y1-y2|)
-    const distance = Math.abs(unit.position.x - targetX) + Math.abs(unit.position.y - targetY);
+    // 2. Vérifier la distance 
+    const distance = Math.abs(unit.position.x - targetTile.x) + Math.abs(unit.position.y - targetTile.y);
     if (distance > unit.moveRange) throw new Error("Trop loin !");
 
     // 3. Vérifier si la case est occupée
-    if (!game.isCellFree(targetX, targetY)) throw new Error("Case occupée !");
-
+    if (!game.isCellFree(targetTile)) throw new Error("Case occupée !");
     // 4. Appliquer le mouvement
-    unit.position.x = targetX;
-    unit.position.y = targetY;
+    unit.position.x = targetTile.x;
+    unit.position.y = targetTile.y;
+    unit.position.z = targetTile.floorZ;
     // unit.hasMoved = true; 
 
     return game; // On renvoie l'état mis à jour

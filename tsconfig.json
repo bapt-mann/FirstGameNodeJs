@@ -4,14 +4,14 @@
     "module": "commonjs",       // INDISPENSABLE pour Node.js
     "moduleResolution": "node",
     "outDir": "./dist",         // Le serveur compilé ira dans dist/
-    "rootDir": "./",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     
     // On enlève "dom" pour éviter d'utiliser 'document' par erreur côté serveur
-    "lib": ["es6"]              
+    "lib": ["es6", "DOM"]              
   },
-  "include": ["src/**/*", "server.ts"], // Tout le serveur
-  "exclude": ["public/**/*"]            // On NE touche PAS au client
+  "include": ["src/**/*", "src/server.ts"], // Tout le serveur
+  "exclude": ["dist/public/**/*"]            // On NE touche PAS au client
 }

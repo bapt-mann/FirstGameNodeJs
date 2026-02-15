@@ -1,12 +1,22 @@
 declare var io: any;
 const socket = io();
 
+interface Tile {
+  type: 'GRASS' | 'WALL' | 'WATER' | 'STAIRS_UP' | 'STAIRS_DOWN';
+  isWalkable: boolean;
+  x: number;
+  y: number;
+  z: number;
+}
+
 let myUserId: number | null = null;
 let currentTeam: number[] = [];
 
 // Variable pour savoir quel étage on regarde (Caméra)
 let viewingFloor = 0; 
 let gameData: any = null; // Stockera les données reçues du serveur
+let selectedTile: Tile | null = null;
+let selectedUnitId: number | null = null;
 
 //#region Éléments du DOM
 const screens = {
@@ -179,7 +189,6 @@ socket.on('room_closed', (reason: string) => {
 });
 //#endregion
 
-
 //#region  READY BUTTON LOGIC
 document.getElementById('btn-ready')?.addEventListener('click', () => {
     socket.emit('player_ready');
@@ -194,47 +203,101 @@ socket.on('opponent_ready', (pseudo: string) => {
     addLog(`⚡ ${pseudo} est prêt !`);
 });
 
-socket.on('game_start', (gameData: any) => {
-    console.log("LA PARTIE COMMENCE !", gameData);
-
+socket.on('game_start', (game: any) => {
+    console.log("LA PARTIE COMMENCE !", game);
+    gameData = game;
     // C'est ici qu'on change d'écran automatiquement
     showScreen('game');
     renderMap();
 });
 //#endregion
 
+
 //#region  --- LOGIQUE DE JEU ---
+
+// Boutons pour changer d'étage 
+document.getElementById('btn-floor-up')?.addEventListener('click', () => {
+    if (viewingFloor < gameData.floors - 1) {
+        viewingFloor++;
+        renderMap();
+    }
+});
+
+document.getElementById('btn-floor-down')?.addEventListener('click', () => {
+    if (viewingFloor > 0) {
+        viewingFloor--;
+        renderMap();
+    }
+});
 
 socket.on('game_update', (game: any) => {
     gameData = game;
-    // Par défaut, on regarde l'étage où se trouve notre première unité, ou l'étage 0
     renderMap();
 });
 
+socket.on('first_placement', (game: any) => {
+    gameData = game;
+    for (const unit of gameData.units) {
+        if (unit.ownerDbId === myUserId) {
+            unit.position.x = 3;
+            unit.position.y = 0;
+            unit.position.z = 0;
+            break;
+        }
+    }
+    renderMap();
+    alert("Placez vos unités sur le terrain !");
+});
+
+ 
+
 function renderMap() {
+    console.log("Données reçues :", gameData);
     const board = document.getElementById('game-board')!;
-    board.innerHTML = ''; // On efface tout (bourrin mais simple au début)
+    board.innerHTML = '';
 
-    // On récupère juste la grille de l'étage qu'on regarde
-    const floorMap = gameData.map[viewingFloor];
+    // SÉCURITÉ : Vérifier si les données sont bien là
+    if (!gameData || !gameData.map || !gameData.map.floors) {
+        console.error("Données de map invalides ou incomplètes", gameData);
+        return;
+    }
 
-    // Double boucle pour dessiner Y puis X
-    for (let y = 0; y < 15; y++) {
-        for (let x = 0; x < 10; x++) {
+    // RÉCUPÉRATION DE LA GRILLE
+
+    const floorMap = gameData.map.floors[viewingFloor.toString()];
+
+    if (!floorMap) {
+        console.error(`Étage ${viewingFloor} introuvable dans les données`, gameData.map.floors);
+        return;
+    }
+
+    // On utilise les dimensions dynamiques envoyées par le serveur
+    const height = gameData.map.height; // 15
+    const width = gameData.map.width;   // 10
+    // CONFIGURER LA GRILLE CSS
+    const cellSize = 50; // Taille fixe des cellules en pixels
+    board.style.gridTemplateColumns = `repeat(${width}, ${cellSize}px)`;
+    board.style.gridTemplateRows = `repeat(${height}, ${cellSize}px)`;
+
+    // DESSINER LA GRILLE
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
             
-            // 1. Créer la case (Terrain)
-            const cellData = floorMap[y][x];
+            const cellData = floorMap.grid[y][x];
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
-            
-            // Appliquer le style selon le type (mur, eau...)
+
+            if (selectedTile && x === selectedTile.x && y === selectedTile.y && viewingFloor === selectedTile.z) {
+                cellDiv.classList.add('selected');
+            }
+
+            // Styles du terrain
             if (cellData.type === 'WALL') cellDiv.classList.add('wall');
             if (cellData.type === 'STAIRS_UP') cellDiv.classList.add('stairs-up');
+            if (cellData.type === 'STAIRS_DOWN') cellDiv.classList.add('stairs-down');
 
-            // Gestion du clic (Déplacement)
-            cellDiv.addEventListener('click', () => onCellClick(x, y, viewingFloor));
-
-            // 2. Vérifier s'il y a une unité ICI ET à cet ÉTAGE
+            // --- GESTION DES UNITÉS ---
+            // On cherche une unité à ces coordonnées X, Y, Z
             const unit = gameData.units.find((u: any) => 
                 u.position.x === x && 
                 u.position.y === y && 
@@ -244,33 +307,67 @@ function renderMap() {
             if (unit) {
                 const unitDiv = document.createElement('div');
                 unitDiv.className = 'unit';
-                // Si c'est mon unité ou celle de l'ennemi
-                unitDiv.classList.add(unit.ownerId === myUserId ? 'me' : 'enemy');
+                // Couleur : Bleu si c'est moi, Rouge si c'est l'autre
+                unitDiv.classList.add(unit.ownerDbId === myUserId ? 'me' : 'enemy');
                 
-                // (Optionnel) Ajouter une image
-                // unitDiv.style.backgroundImage = `url(${unit.spriteUrl})`;
-                
+                // Si cette unité est celle qu'on a sélectionnée, on ajoute un effet visuel
+                // if (selectedUnitId === unit.id) {
+                //     unitDiv.classList.add('selected-unit');
+                // }
+
                 cellDiv.appendChild(unitDiv);
             }
+
+            // Gestion du Clic (Déplacement ou Sélection)
+            let drawingTile: Tile = { x, y, z: viewingFloor, isWalkable: cellData.isWalkable, type: cellData.type };
+            cellDiv.addEventListener('click', () => onCellClick(drawingTile));
 
             board.appendChild(cellDiv);
         }
     }
     
+    // Mise à jour de l'affichage de l'étage
     document.getElementById('current-floor-display')!.innerText = (viewingFloor + 1).toString();
 }
 
-// Boutons pour changer d'étage (Caméra)
-document.getElementById('btn-floor-up')?.addEventListener('click', () => {
-    if (viewingFloor < gameData.floors - 1) {
-        viewingFloor++;
-        renderMap();
+
+function onCellClick(tile: Tile): any {
+    console.log(`Clic sur ${tile.x}, ${tile.y}`);
+
+    // 1. On enregistre la nouvelle sélection
+    // Si on reclique sur la même case, on peut désélectionner (optionnel)
+    if (selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y && viewingFloor === selectedTile.z) {
+        selectedTile = null; // Désélectionne
+        selectedUnitId = null;           // On oublie l'unité aussi
+    } else {
+        selectedTile = tile; // Nouvelle sélection
     }
-});
 
-function onCellClick(x: number, y: number, viewingFloor: number): any {
-    console.log("You clicked on cell (" + x + ", " + y + ") on floor " + viewingFloor);
+    // 2. Gestion de l'unité (Ton code existant)
+    // On doit retrouver l'unité à cet endroit pour savoir si on sélectionne un perso
+    // ou si on essaie de bouger
+    const unitOnCell = gameData.units.find((u: any) => 
+        u.position.x === tile.x && u.position.y === tile.y && u.position.z === viewingFloor
+    );
 
+    if (unitOnCell && unitOnCell.ownerDbId === myUserId) {
+        selectedUnitId = unitOnCell.id;
+    } else if (selectedUnitId && !unitOnCell) {
+        // Logique de mouvement (socket.emit...)
+        socket.emit('move_unit', { unitId: selectedUnitId, tile });
+        selectedUnitId = null;
+        selectedTile = null; // On désélectionne après le mouvement
+    }
+
+    // 3. IMPORTANT : On redessine la grille pour appliquer la classe .selected visuellement
+    renderMap();
+
+}
+
+function first_placement(): any {
+    console.log("Placez vos unités sur le terrain !");
+    gameData.startPlacement()
+    
 }
 
 //#endregion
