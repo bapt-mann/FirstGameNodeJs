@@ -2,7 +2,7 @@ import { Server, Socket } from "socket.io";
 import db from "../config/db";
 import { createRoomInDB, joinRoomByCode } from "../services/roomService";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
-import { getAllCharacters, toggleCharacterSelection, moveUnit, getSelectedCharacters } from "../services/gameService";
+import { getAllCharacters, toggleCharacterSelection, moveUnit, getSelectedCharacters, automaticPlaceUnit } from "../services/gameService";
 import { Debug } from "../models/Debug";
 import { leaveRoomInDB } from "../services/roomService";
 import { gameManager } from "../managers/GameManager"; // Assure-toi que le chemin est bon (G majuscule ?)  
@@ -20,7 +20,7 @@ export default function setupSocket(io: Server) {
         // On se souvient de qui est le joueur et où il se trouve
         let myUserId: number | null = null;
         let myUsername: string = "";
-        let currentRoomCode: string | null = null; // Important : Stocke le code de la room actuelle
+        let currentRoomCode: string | null = null; // Stocke le code de la room actuelle
 
         console.log("Connecté : " + socket.id);
  
@@ -269,74 +269,84 @@ export default function setupSocket(io: Server) {
         });
 
         // --- 8. PRÊT / DÉBUT DE PARTIE ---
-        socket.on('player_ready', () => {
-            if (!currentRoomCode) return; // Sécurité
+        // On ajoute 'async' devant la fonction de callback
+        socket.on('player_ready', async () => {
+            
+            // 1ère (et unique) vérification
+            if (!currentRoomCode) return; 
 
-            const game = gameManager.getGame(currentRoomCode);
+            // On "capture" le code de la room dans une constante locale.
+            // Les constantes locales ne peuvent pas être modifiées de l'extérieur !
+            const roomCode = currentRoomCode; 
+
+            const game = gameManager.getGame(roomCode);
             if (!game) return;
 
-            // 1. On trouve le joueur qui a cliqué (via son socket.id)
             const player = game.players.find(p => p.socketId === socket.id);
-            
-            if (player) {
-                    getSelectedCharacters(game.roomDbId, player.dbId).then(selectedIds => {
-                        player.selectedCharacterIds = selectedIds;
-                        console.log(`Joueur ${player.pseudo} a sélectionné les personnages :`, selectedIds);
-                    }).catch(err => {
-                        console.error("Erreur en récupérant les personnages sélectionnés :", err);
-                    });
-                    player.isReady = true;
-                    // On boucle sur les IDs que le joueur a choisis
-                    for (const charId of player.selectedCharacterIds) {
-                        
-                        // 1. Récupérer les stats du personnage (Nom, PV, Atk...)
-                        // Exemple fictif (à adapter avec ton vrai appel BDD ou ta liste en cache) :
-                        // const charData = await db.getCharacterById(charId); 
-                        
-                        // Pour l'exemple, on va dire qu'on a un objet charData :
-                        const charData = { name: "Guerrier", hp: 20, atk: 8 }; // À REMPLACER
+            if (!player) return; // Sécurité si le joueur n'est pas trouvé
 
-                        // 2. Générer un ID unique pour cette unité sur le plateau
-                        // (Utile si un jour tu permets d'avoir 2 "Guerriers" dans la même équipe)
-                        const uniqueUnitId = `${player.playerGameId}_${charId}_${Math.random().toString(36).substring(2, 9)}`;
+            try {
+                // Le code s'arrête ici et ATTEND la réponse de la BDD
+                const selectedIds = await getSelectedCharacters(game.roomDbId, player.dbId);
+                
+                // --- 50 millisecondes plus tard, l'exécution reprend ici ---
+                
+                player.selectedCharacterIds = selectedIds;
+                player.isReady = true;
+                
+                // création des unités 
+                for (const charId of player.selectedCharacterIds) {
+                    
+                    // 1. Récupérer les stats du personnage (Nom, PV, Atk...)
+                    // Exemple fictif (à adapter avec ton vrai appel BDD ou ta liste en cache) :
+                    // const charData = await db.getCharacterById(charId); 
+                    
+                    // Pour l'exemple, on va dire qu'on a un objet charData :
+                    const charData = { name: "Guerrier", hp: 20, atk: 8 }; // À REMPLACER
 
-                        // 3. Créer l'objet Unit
-                        // On met x=-1, y=-1, z=-1 car l'unité est "dans la main" du joueur, pas encore sur la carte
-                        const newUnit = new Unit(
-                            uniqueUnitId,
-                            "test", // charData.name, // À REMPLACER
-                            player.playerGameId,
-                            1, 1, 1 
-                        );
+                    // 2. Générer un ID unique pour cette unité sur le plateau
+                    // (Utile si un jour tu permets d'avoir 2 "Guerriers" dans la même équipe)
+                    const uniqueUnitId = `${player.playerGameId}_${charId}_${Math.random().toString(36).substring(2, 9)}`;
 
-                        // (Optionnel) Appliquer les vraies stats de la BDD à l'unité
-                        // newUnit.hp = charData.hp;
-                        // newUnit.maxHp = charData.hp;
-                        // newUnit.atk = charData.atk;
+                    // 3. Créer l'objet Unit
+                    // On met x=-1, y=-1, z=-1 car l'unité est "dans la main" du joueur, pas encore sur la carte
+                    const newUnit = new Unit(
+                        uniqueUnitId,
+                        "test", // charData.name, // À REMPLACER
+                        player.playerGameId,
+                        1, 1, 1 
+                    );
 
-                        // 4. L'ajouter au tableau global du jeu
-                        game.units.push(newUnit);
-                    }
+                    // (Optionnel) Appliquer les vraies stats de la BDD à l'unité
+                    // newUnit.hp = charData.hp;
+                    // newUnit.maxHp = charData.hp;
+                    // newUnit.atk = charData.atk;
 
-                    console.log(`Joueur ${player.pseudo} est PRÊT avec ${player.selectedCharacterIds.length} unités.`);
-                    socket.to(currentRoomCode).emit('opponent_ready', player.pseudo);
+                    // 4. L'ajouter au tableau global du jeu
+                    game.units.push(newUnit);
                 }
 
-            // 2. VÉRIFICATION : Est-ce que TOUT LE MONDE est prêt ?
-            // Il faut 2 joueurs et que tous aient isReady = true
-            const allReady = game.players.length === 2 && game.players.every(p => p.isReady);
-
-            if (allReady) {
-                console.log(`Room ${currentRoomCode} : Tout le monde est prêt ! Lancement...`);
                 
-                // On change le statut du jeu
-                game.status = 'PLAYING';
 
-                // 3. On envoie le signal de DÉPART à tout le monde
-                console.log("Données de la game au départ :", game);
-                io.to(currentRoomCode).emit('game_start', game);
+                console.log(`Joueur ${player.pseudo} est PRÊT avec ${player.selectedCharacterIds.length} unités.`);
                 
-                io.to(currentRoomCode).emit('first_placement', game);
+                // Plus besoin de revérifier ! On utilise la constante locale 'roomCode'
+                socket.to(roomCode).emit('opponent_ready', player.pseudo);
+
+                // VÉRIFICATION DE LA GAME
+                const allReady = game.players.length === 2 && game.players.every(p => p.isReady);
+
+                if (allReady) {
+                    console.log(`Room ${roomCode} : Tout le monde est prêt ! Lancement...`);
+                    game.status = 'PLAYING';
+                    await automaticPlaceUnit(game); // Place les unités automatiquement pour l'instant
+                    io.to(roomCode).emit('game_start', game);
+                    io.to(roomCode).emit('first_placement', game);
+                }
+
+            } catch (err) {
+                // On attrape l'erreur ici au lieu du .catch()
+                console.error("Erreur en récupérant les personnages :", err);
             }
         });
     });
