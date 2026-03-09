@@ -64,11 +64,11 @@ export class Game {
       
       // initialise toutes les unités à une position "virtuelle"
       this.units.forEach(u => {
-          if (u.ownerId === 1) {
+          if (u.ownerGameId === 1) {
               u.position = {x: posJ1, y: 0, z: 0};
               posJ1++;
           }
-          else if (u.ownerId === 2) {
+          else if (u.ownerGameId === 2) {
               u.position = { x: posJ2, y: this.map.height - 1, z: 0};
               posJ2++;
           }
@@ -80,10 +80,10 @@ export class Game {
 
       const unit = this.units.find(u => u.id === unitId);
       if (!unit) throw new Error("Unité introuvable");
-      if (unit.ownerId !== player.dbId) throw new Error("Ce n'est pas ton unité");
+      if (unit.ownerGameId !== player.dbId) throw new Error("Ce n'est pas ton unité");
       
       if (!tile || tile.isWalkable === false) {
-           throw new Error("Tu ne peux pas placer ici !");
+        throw new Error("Tu ne peux pas placer ici !");
       }
 
       // 2. Vérifier si case occupée
