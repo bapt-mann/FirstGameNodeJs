@@ -1,12 +1,20 @@
 declare var io: any;
 const socket = io();
 
+enum TileType {
+  GRASS = 'GRASS',
+  WALL = 'WALL',
+  WATER = 'WATER',
+  STAIRS_UP = 'STAIRS_UP',
+  STAIRS_DOWN = 'STAIRS_DOWN'
+}
+
 interface Tile {
-  type: 'GRASS' | 'WALL' | 'WATER' | 'STAIRS_UP' | 'STAIRS_DOWN';
+  type: TileType;
   isWalkable: boolean;
   x: number;
   y: number;
-  z: number;
+  floorZ: number;
 }
 
 let myUserId: number | null = null;
@@ -127,6 +135,7 @@ socket.on('list_characters', (chars: any[]) => {
         
         // Clic sur la carte
         div.addEventListener('click', () => {
+            console.log("Clic sur perso ID", c.id);
             socket.emit('toggle_char', c.id);
         });
 
@@ -136,6 +145,7 @@ socket.on('list_characters', (chars: any[]) => {
 
 socket.on('team_update', (teamIds: number[]) => {
     currentTeam = teamIds;
+    console.log("Équipe mise à jour :", teamIds);
     
     // On met à jour les bordures
     document.querySelectorAll('.char-card').forEach((div: any) => {
@@ -191,7 +201,7 @@ socket.on('room_closed', (reason: string) => {
 
 //#region  READY BUTTON LOGIC
 document.getElementById('btn-ready')?.addEventListener('click', () => {
-    socket.emit('player_ready');
+    socket.emit('player_ready', currentTeam);
     // On grise le bouton
     const btn = document.getElementById('btn-ready') as HTMLButtonElement;
     btn.disabled = true;
@@ -215,16 +225,51 @@ socket.on('game_start', (game: any) => {
 
 //#region  --- LOGIQUE DE JEU ---
 
-// Boutons pour changer d'étage 
+function updateFloorDisplay() {
+    const displaySpan = document.getElementById('current-floor-display');
+    if (!displaySpan) return;
+
+    let text = "";
+    if (viewingFloor === 0) {
+        text = "Rez-de-chaussée";
+    } else if (viewingFloor > 0) {
+        text = `Étage ${viewingFloor}`;
+    } else {
+        text = `Sous-sol ${Math.abs(viewingFloor)}`;
+    }
+
+    displaySpan.innerText = text;
+
+    // BONUS : Griser les boutons si on ne peut plus bouger
+    const btnUp = document.getElementById('btn-floor-up') as HTMLButtonElement;
+    const btnDown = document.getElementById('btn-floor-down') as HTMLButtonElement;
+
+    if (gameData && gameData.map) {
+        // Désactive le bouton UP si on est au max
+        btnUp.disabled = (viewingFloor >= gameData.map.maxZ);
+        // Désactive le bouton DOWN si on est au min
+        btnDown.disabled = (viewingFloor <= gameData.map.minZ);
+    }
+}
+
+// Bouton MONTER (UP)
 document.getElementById('btn-floor-up')?.addEventListener('click', () => {
-    if (viewingFloor < gameData.floors - 1) {
+    // SÉCURITÉ : On vérifie que gameData est chargé
+    if (!gameData || !gameData.map) return;
+
+    // LOGIQUE : Si l'étage actuel est plus petit que le max, on monte
+    if (viewingFloor < gameData.map.maxZ) {
         viewingFloor++;
         renderMap();
     }
 });
 
+// Bouton DESCENDRE (DOWN)
 document.getElementById('btn-floor-down')?.addEventListener('click', () => {
-    if (viewingFloor > 0) {
+    if (!gameData || !gameData.map) return;
+
+    // LOGIQUE : Si l'étage actuel est plus grand que le min (ex: -1), on descend
+    if (viewingFloor > gameData.map.minZ) {
         viewingFloor--;
         renderMap();
     }
@@ -237,19 +282,17 @@ socket.on('game_update', (game: any) => {
 
 socket.on('first_placement', (game: any) => {
     gameData = game;
-    for (const unit of gameData.units) {
-        if (unit.ownerDbId === myUserId) {
-            unit.position.x = 3;
-            unit.position.y = 0;
-            unit.position.z = 0;
-            break;
-        }
-    }
+    // for (const unit of gameData.units) {
+    //     if (unit.ownerGameId === myUserId) {
+    //         unit.position.x = 3;
+    //         unit.position.y = 0;
+    //         unit.position.z = 0;
+    //         break;
+    //     }
+    // }
     renderMap();
     alert("Placez vos unités sur le terrain !");
 });
-
- 
 
 function renderMap() {
     console.log("Données reçues :", gameData);
@@ -272,8 +315,8 @@ function renderMap() {
     }
 
     // On utilise les dimensions dynamiques envoyées par le serveur
-    const height = gameData.map.height; // 15
-    const width = gameData.map.width;   // 10
+    const height = gameData.map.height; 
+    const width = gameData.map.width;
     // CONFIGURER LA GRILLE CSS
     const cellSize = 50; // Taille fixe des cellules en pixels
     board.style.gridTemplateColumns = `repeat(${width}, ${cellSize}px)`;
@@ -287,24 +330,28 @@ function renderMap() {
             const cellDiv = document.createElement('div');
             cellDiv.className = 'cell';
 
-            if (selectedTile && x === selectedTile.x && y === selectedTile.y && viewingFloor === selectedTile.z) {
+            if (selectedTile && x === selectedTile.x && y === selectedTile.y && viewingFloor === selectedTile.floorZ) {
                 cellDiv.classList.add('selected');
             }
 
             // Styles du terrain
-            if (cellData.type === 'WALL') cellDiv.classList.add('wall');
-            if (cellData.type === 'STAIRS_UP') cellDiv.classList.add('stairs-up');
-            if (cellData.type === 'STAIRS_DOWN') cellDiv.classList.add('stairs-down');
+            if (cellData.type === TileType.WALL) cellDiv.classList.add('wall');
+            if (cellData.type === TileType.WATER) cellDiv.classList.add('water');
+            if (cellData.type === TileType.GRASS) cellDiv.classList.add('grass');
+            if (cellData.type === TileType.STAIRS_UP) cellDiv.classList.add('stairs-up');
+            if (cellData.type === TileType.STAIRS_DOWN) cellDiv.classList.add('stairs-down');
 
             // --- GESTION DES UNITÉS ---
             // On cherche une unité à ces coordonnées X, Y, Z
+            
             const unit = gameData.units.find((u: any) => 
-                u.position.x === x && 
-                u.position.y === y && 
-                u.position.z === viewingFloor
+                Number(u.position.x) === Number(x) && 
+                Number(u.position.y) === Number(y) && 
+                Number(u.position.z) === Number(viewingFloor)
             );
 
             if (unit) {
+                cellDiv.classList.add('has-unit');
                 const unitDiv = document.createElement('div');
                 unitDiv.className = 'unit';
                 // Couleur : Bleu si c'est moi, Rouge si c'est l'autre
@@ -319,7 +366,7 @@ function renderMap() {
             }
 
             // Gestion du Clic (Déplacement ou Sélection)
-            let drawingTile: Tile = { x, y, z: viewingFloor, isWalkable: cellData.isWalkable, type: cellData.type };
+            let drawingTile: Tile = { x, y, floorZ: viewingFloor, isWalkable: cellData.isWalkable, type: cellData.type };
             cellDiv.addEventListener('click', () => onCellClick(drawingTile));
 
             board.appendChild(cellDiv);
@@ -328,40 +375,73 @@ function renderMap() {
     
     // Mise à jour de l'affichage de l'étage
     document.getElementById('current-floor-display')!.innerText = (viewingFloor + 1).toString();
+    updateFloorDisplay();
 }
 
-
 function onCellClick(tile: Tile): any {
-    console.log(`Clic sur ${tile.x}, ${tile.y}`);
+    console.log(`Clic sur ${tile.x}, ${tile.y}, étage ${viewingFloor}`);
 
-    // 1. On enregistre la nouvelle sélection
-    // Si on reclique sur la même case, on peut désélectionner (optionnel)
-    if (selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y && viewingFloor === selectedTile.z) {
-        selectedTile = null; // Désélectionne
-        selectedUnitId = null;           // On oublie l'unité aussi
-    } else {
-        selectedTile = tile; // Nouvelle sélection
-    }
+    // --- 🔍 DEBUG START ---
+    console.log("🎯 Clic sur Case:", { x: tile.x, y: tile.y, z: viewingFloor });
+    
+    // On affiche juste les positions des unités pour voir si ça correspond
+    const positions = gameData.units.map((u: any) => ({ 
+        id: u.id, 
+        pos: u.position,
+        types: { 
+            x: typeof u.position.x, 
+            clickX: typeof tile.x 
+        } 
+    }));
+    console.table(positions);
+    // --- 🔍 DEBUG END ---
 
-    // 2. Gestion de l'unité (Ton code existant)
-    // On doit retrouver l'unité à cet endroit pour savoir si on sélectionne un perso
-    // ou si on essaie de bouger
+    // On cherche l'unité
     const unitOnCell = gameData.units.find((u: any) => 
-        u.position.x === tile.x && u.position.y === tile.y && u.position.z === viewingFloor
+        Number(u.position.x) === Number(tile.x) && 
+        Number(u.position.y) === Number(tile.y) && 
+        Number(u.position.z) === Number(viewingFloor)
     );
 
+    // Gestion Sélection / Désélection
+    
+    // On clique sur une de NOS unités
     if (unitOnCell && unitOnCell.ownerDbId === myUserId) {
-        selectedUnitId = unitOnCell.id;
-    } else if (selectedUnitId && !unitOnCell) {
-        // Logique de mouvement (socket.emit...)
-        socket.emit('move_unit', { unitId: selectedUnitId, tile });
+        
+        // Si c'était déjà elle la sélectionnée, on désélectionne (toggle)
+        if (selectedUnitId === unitOnCell.id) {
+            selectedUnitId = null;
+            selectedTile = null;
+        } else {
+            // Sinon, on la sélectionne
+            selectedUnitId = unitOnCell.id;
+            selectedTile = tile; // On garde la tile pour l'affichage jaune
+        }
+
+    } 
+    // On a une unité sélectionnée et on clique sur une case VIDE
+    else if (selectedUnitId && !unitOnCell) {
+        // Logique de mouvement
+        console.log(`Tentative de déplacement de ${selectedUnitId} vers`, tile);
+        //socket.emit('move_unit', { unitId: selectedUnitId, tile });
+        
+        // On nettoie la sélection après l'ordre de mouvement
         selectedUnitId = null;
-        selectedTile = null; // On désélectionne après le mouvement
+        selectedTile = null;
+    }
+    // Clic dans le vide sans sélection (Juste pour sélectionner la case visuellement)
+    else {
+        // Si on reclique sur la même case vide, on désélectionne
+        if (selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y) {
+            selectedTile = null;
+        } else {
+            selectedTile = tile;
+        }
+        selectedUnitId = null; // On est sûr qu'on a pas d'unité sélectionnée
     }
 
-    // 3. IMPORTANT : On redessine la grille pour appliquer la classe .selected visuellement
+    // On redessine
     renderMap();
-
 }
 
 function first_placement(): any {
