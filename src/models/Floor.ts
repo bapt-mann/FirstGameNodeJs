@@ -22,12 +22,27 @@ export class Floor {
             let row: Tile[] = [];
             for (let x = 0; x < this.width; x++) {
                 // On passe z au Tile si besoin, sinon x, y suffisent
-                let tile = new Tile(TileType.GRASS, x, y, this.z); 
+                let type: TileType;
+                if (this.z == 0) {type = TileType.GRASS}
+                else if (this.z > 0) {type = TileType.WATER}
+                else {type = TileType.WALL}
+                
+                let tile = new Tile(type, x, y, this.z); 
                 tile.isWalkable = true;
                 row.push(tile);
             }
             this.grid.push(row);
         }
+    }
+
+    private generateTilesTypes() {
+        // Ici, on pourrait ajouter des escaliers, des murs, etc. selon le Z
+        // Par exemple, si z > 0, on pourrait ajouter des escaliers pour monter
+        // Si z < 0, on pourrait ajouter des escaliers pour descendre
+    }
+
+    private generateUnits() {
+        // Si on veut des unités fixes sur la map, on peut les générer ici
     }
 
     // --- Getters Utilitaires ---
