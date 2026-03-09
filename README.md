@@ -36,7 +36,9 @@ Ce dépôt correspond à une première itération ("FirstGame"). Il s'agit d'un 
 ## Comment lancer le projet :
 
 git clone https://github.com/bapt-mann/FirstGameNodeJs
+
 se positionner sur le dossier racine du projet et lancer la commande : `npm start`
+rebuild JS : `npx tsc`
 
 ---
 *Développé par [Baptiste Boin](https://www.baptiste-boin.fr)*
