@@ -211,7 +211,7 @@ button:disabled {
 .cell {
     width: 50px;
     height: 50px;
-    background-color: #76c659; /* Herbe par défaut */
+    background-color: #000000; /* Herbe par défaut */
     position: relative; /* Pour positionner l'unité dedans */
     box-sizing: border-box;
 }
@@ -219,10 +219,16 @@ button:disabled {
 /* Les types de terrain */
 .cell.wall { background-color: #555; } /* Mur gris */
 .cell.water { background-color: #4a90e2; } /* Eau bleue */
+.cell.grass { background-color: #76c659; } /* Herbe verte */
 .cell.stairs-up { 
     background-color: #e67e22; 
     background-image: url('/public/assets/stairs_up.png'); /* Plus tard */
 }
+.cell.stairs-down { 
+    background-color: #e67e22; 
+    background-image: url('/public/assets/stairs_down.png'); /* Plus tard */
+}
+.cell.has-unit { background-color: #8e44ad; } /* Cellule avec unité (pour test) */
 
 /* L'unité (Le Pion) */
 .unit {
