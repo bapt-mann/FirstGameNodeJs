@@ -52,16 +52,42 @@ export async function toggleCharacterSelection(roomDbId: number, userId: number,
     return newSelection.map(row => row.character_id);
 }
 
+export async function getSelectedCharacters(roomDbId: number, userDbId: number) {
+    const [rows] = await db.promise().query<RowDataPacket[]>(
+        "SELECT character_id FROM room_team_selection WHERE room_id = ? AND user_id = ?",
+        [roomDbId, userDbId]
+    );
+    return rows.map(row => row.character_id);
+}
+
 // =========================================================
 // 2. PARTIE JEU : LOGIQUE TACTIQUE (MÉMOIRE)
 // =========================================================
+
+// Placement initial des unités
+export function automaticPlaceUnit(game: Game) {
+    // On place les unités du Joueur 1 en bas à gauche
+    let posJ1: number = 0;
+    // On place les unités du Joueur 2 en haut à droite
+    let posJ2: number = 0;
+    game.units.forEach(u => {
+        if (u.ownerGameId === 1) {
+            u.position = {x: posJ1, y: 0, z: 0};
+            posJ1++;
+        }
+        else if (u.ownerGameId === 2) {
+            u.position = { x: posJ2, y: game.map.height - 1, z: 0};
+            posJ2++;
+        }
+    });
+}
 
 export function moveUnit(game: Game, unitId: string, targetTile: Tile, playerId: number) {
     const unit = game.units.find(u => u.id === unitId);
 
     // 1. Vérifications de base
     if (!unit) throw new Error("Unité introuvable");
-    if (unit.ownerId !== playerId) throw new Error("Ce n'est pas votre unité !");
+    if (unit.ownerGameId !== playerId) throw new Error("Ce n'est pas votre unité !");
     
     // (Tu pourras ajouter ici la logique de 'hasMoved' plus tard)
     // if (unit.hasMoved) throw new Error("Cette unité a déjà bougé.");
