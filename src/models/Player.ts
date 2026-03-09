@@ -2,9 +2,9 @@ export class Player {
 
   // 1. IDENTIFICATION
   public socketId: string; // L'adresse temporaire (ex: "Xy9z...") pour Socket.IO
-  public dbId: number; 
-  public playerGameId: number;   // L'ID unique MySQL (ex: 42) pour la BDD
-  public pseudo: string;   // "Mario"
+  public dbId: number; // L'ID unique MySQL (ex: 42) pour la BDD
+  public playerGameId: number; // 1 ou 2 pour différencier les joueurs dans la partie
+  public pseudo: string;
 
   // 2. ÉTAT DANS LE LOBBY
   public isReady: boolean = false;   
