@@ -55,6 +55,7 @@ document.getElementById('btn-login')?.addEventListener('click', () => {
 socket.on('login_success', (user: any) => {
     myUserId = user.id;
     document.getElementById('welcome-msg')!.textContent = `Bonjour ${user.pseudo}`;
+    console.log("Login réussi, mon ID est", myUserId);
     showScreen('menu');
 });
 //#endregion
@@ -172,7 +173,6 @@ socket.on('team_update', (teamIds: number[]) => {
 });
 //#endregion
 
-
 //#region  LEAVE ROOM LOGIC
 document.getElementById('btn-leave')?.addEventListener('click', () => {
     if (confirm("Voulez-vous vraiment quitter ?")) {
@@ -275,21 +275,13 @@ document.getElementById('btn-floor-down')?.addEventListener('click', () => {
     }
 });
 
-socket.on('game_update', (game: any) => {
+socket.on('update_game', (game: any) => {
     gameData = game;
     renderMap();
 });
 
 socket.on('first_placement', (game: any) => {
     gameData = game;
-    // for (const unit of gameData.units) {
-    //     if (unit.ownerGameId === myUserId) {
-    //         unit.position.x = 3;
-    //         unit.position.y = 0;
-    //         unit.position.z = 0;
-    //         break;
-    //     }
-    // }
     renderMap();
     alert("Placez vos unités sur le terrain !");
 });
@@ -358,14 +350,14 @@ function renderMap() {
                 unitDiv.classList.add(unit.ownerDbId === myUserId ? 'me' : 'enemy');
                 
                 // Si cette unité est celle qu'on a sélectionnée, on ajoute un effet visuel
-                // if (selectedUnitId === unit.id) {
-                //     unitDiv.classList.add('selected-unit');
-                // }
+                if (selectedUnitId === unit.id) {
+                    unitDiv.classList.add('selected-unit');
+                }
 
                 cellDiv.appendChild(unitDiv);
             }
 
-            // Gestion du Clic (Déplacement ou Sélection)
+            // Gestion de l'événement de Clic sur la div de la cellule
             let drawingTile: Tile = { x, y, floorZ: viewingFloor, isWalkable: cellData.isWalkable, type: cellData.type };
             cellDiv.addEventListener('click', () => onCellClick(drawingTile));
 
@@ -379,9 +371,7 @@ function renderMap() {
 }
 
 function onCellClick(tile: Tile): any {
-    console.log(`Clic sur ${tile.x}, ${tile.y}, étage ${viewingFloor}`);
 
-    // --- 🔍 DEBUG START ---
     console.log("🎯 Clic sur Case:", { x: tile.x, y: tile.y, z: viewingFloor });
     
     // On affiche juste les positions des unités pour voir si ça correspond
@@ -394,9 +384,8 @@ function onCellClick(tile: Tile): any {
         } 
     }));
     console.table(positions);
-    // --- 🔍 DEBUG END ---
 
-    // On cherche l'unité
+    // On cherche l'unité qui serait sur la case cliquée (si elle existe)
     const unitOnCell = gameData.units.find((u: any) => 
         Number(u.position.x) === Number(tile.x) && 
         Number(u.position.y) === Number(tile.y) && 
@@ -407,7 +396,7 @@ function onCellClick(tile: Tile): any {
     
     // On clique sur une de NOS unités
     if (unitOnCell && unitOnCell.ownerDbId === myUserId) {
-        
+        console.log("🧙 unité sélectionnée:", unitOnCell.id);
         // Si c'était déjà elle la sélectionnée, on désélectionne (toggle)
         if (selectedUnitId === unitOnCell.id) {
             selectedUnitId = null;
@@ -417,13 +406,12 @@ function onCellClick(tile: Tile): any {
             selectedUnitId = unitOnCell.id;
             selectedTile = tile; // On garde la tile pour l'affichage jaune
         }
-
     } 
     // On a une unité sélectionnée et on clique sur une case VIDE
     else if (selectedUnitId && !unitOnCell) {
         // Logique de mouvement
         console.log(`Tentative de déplacement de ${selectedUnitId} vers`, tile);
-        //socket.emit('move_unit', { unitId: selectedUnitId, tile });
+        socket.emit('move_unit', { unitId: selectedUnitId, tile });
         
         // On nettoie la sélection après l'ordre de mouvement
         selectedUnitId = null;
@@ -439,7 +427,7 @@ function onCellClick(tile: Tile): any {
         }
         selectedUnitId = null; // On est sûr qu'on a pas d'unité sélectionnée
     }
-
+    console.log("Sélection actuelle:", { selectedUnitId, selectedTile });
     // On redessine
     renderMap();
 }

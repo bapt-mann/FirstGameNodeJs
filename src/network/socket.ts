@@ -214,7 +214,7 @@ export default function setupSocket(io: Server) {
                 const updatedGame = moveUnit(game, data.unitId, data.tile, myUserId!);
                 
                 // On envoie la mise à jour à tout le monde DANS LA ROOM (via le code)
-                io.to(currentRoomCode).emit('update_game', updatedGame);
+                socket.emit('update_game', updatedGame);
             } catch (e: any) {
                 socket.emit('error_message', e.message);
             }
@@ -269,7 +269,6 @@ export default function setupSocket(io: Server) {
         });
 
         // --- 8. PRÊT / DÉBUT DE PARTIE ---
-        // On ajoute 'async' devant la fonction de callback
         socket.on('player_ready', async () => {
             
             // 1ère (et unique) vérification
@@ -289,7 +288,7 @@ export default function setupSocket(io: Server) {
                 // Le code s'arrête ici et ATTEND la réponse de la BDD
                 const selectedIds = await getSelectedCharacters(game.roomDbId, player.dbId);
                 
-                // --- 50 millisecondes plus tard, l'exécution reprend ici ---
+                // le code reprend ici une fois que la BDD a répondu (avec les IDs des persos choisis) car on a utilisé "await" plus haut
                 
                 player.selectedCharacterIds = selectedIds;
                 player.isReady = true;
@@ -297,32 +296,32 @@ export default function setupSocket(io: Server) {
                 // création des unités 
                 for (const charId of player.selectedCharacterIds) {
                     
-                    // 1. Récupérer les stats du personnage (Nom, PV, Atk...)
+                    // Récupérer les stats du personnage (Nom, PV, Atk...)
                     // Exemple fictif (à adapter avec ton vrai appel BDD ou ta liste en cache) :
                     // const charData = await db.getCharacterById(charId); 
                     
                     // Pour l'exemple, on va dire qu'on a un objet charData :
                     const charData = { name: "Guerrier", hp: 20, atk: 8 }; // À REMPLACER
 
-                    // 2. Générer un ID unique pour cette unité sur le plateau
+                    // Générer un ID unique pour cette unité sur le plateau
                     // (Utile si un jour tu permets d'avoir 2 "Guerriers" dans la même équipe)
-                    const uniqueUnitId = `${player.playerGameId}_${charId}_${Math.random().toString(36).substring(2, 9)}`;
+                    const uniqueUnitId = `${player.gameId}_${charId}_${charData.name}`; // Par exemple : "1_5_Guerrier"
 
-                    // 3. Créer l'objet Unit
-                    // On met x=-1, y=-1, z=-1 car l'unité est "dans la main" du joueur, pas encore sur la carte
+                    // Créer l'objet Unit
                     const newUnit = new Unit(
                         uniqueUnitId,
                         "test", // charData.name, // À REMPLACER
-                        player.playerGameId,
+                        player.dbId, // ID BDD du joueur (propriétaire de l'unité)
+                        player.gameId, // ID de la partie du joueur (1 ou 2)
                         1, 1, 1 
                     );
 
-                    // (Optionnel) Appliquer les vraies stats de la BDD à l'unité
+                    // Appliquer les vraies stats de la BDD à l'unité
                     // newUnit.hp = charData.hp;
                     // newUnit.maxHp = charData.hp;
                     // newUnit.atk = charData.atk;
 
-                    // 4. L'ajouter au tableau global du jeu
+                    // L'ajouter au tableau global du jeu
                     game.units.push(newUnit);
                 }
 
@@ -330,7 +329,7 @@ export default function setupSocket(io: Server) {
 
                 console.log(`Joueur ${player.pseudo} est PRÊT avec ${player.selectedCharacterIds.length} unités.`);
                 
-                // Plus besoin de revérifier ! On utilise la constante locale 'roomCode'
+                // On utilise la constante locale 'roomCode'
                 socket.to(roomCode).emit('opponent_ready', player.pseudo);
 
                 // VÉRIFICATION DE LA GAME

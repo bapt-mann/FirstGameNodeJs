@@ -5,6 +5,7 @@ import { Position } from "./Types"
 export class Unit {
   id: string;        // Unique ID de l'unité
   name: string;      // "Marth", "Ike"...
+  ownerDbId: number;   // À quel joueur (DB) appartient ce pion
   ownerGameId: number;   // À quel joueur appartient ce pion
 
   position: Position;
@@ -19,9 +20,10 @@ export class Unit {
   
   hasMoved: boolean; // Pour savoir s'il a déjà joué ce tour
 
-  constructor(id: string, name: string, ownerGameId: number, x: number, y: number, z: number) {
+  constructor(id: string, name: string, ownerDbId: number, ownerGameId: number, x: number, y: number, z: number) {
     this.id = id;
     this.name = name;
+    this.ownerDbId = ownerDbId;
     this.ownerGameId = ownerGameId;
 
     this.position = { x, y, z };

@@ -211,9 +211,12 @@ button:disabled {
 .cell {
     width: 50px;
     height: 50px;
-    background-color: #000000; /* Herbe par défaut */
+    background-color: #000000; 
     position: relative; /* Pour positionner l'unité dedans */
     box-sizing: border-box;
+    display: flex;
+    justify-content: center; /* Centre horizontalement */
+    align-items: center; /* Centre verticalement */
 }
 
 /* Les types de terrain */
@@ -230,16 +233,22 @@ button:disabled {
 }
 .cell.has-unit { background-color: #8e44ad; } /* Cellule avec unité (pour test) */
 
+.cell:hover {
+    box-shadow: inset 0 0 0 100px rgba(0, 0, 0, 0.2);
+    cursor: pointer;
+}
+
+.cell.selected {
+    box-shadow: inset 0 0 0 100px rgba(0, 0, 0, 0.2);
+}
+
 /* L'unité (Le Pion) */
 .unit {
     width: 40px;
     height: 40px;
-    border-radius: 50%; /* Rond pour l'instant */
-    position: absolute;
-    top: 5px;
-    left: 5px;
+    border-radius: 50%;
     border: 2px solid white;
-    transition: all 0.2s ease; /* Animation fluide du mouvement ! */
+    transition: all 0.2s ease;
     z-index: 10;
 }
 

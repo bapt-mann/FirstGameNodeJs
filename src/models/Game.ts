@@ -23,14 +23,14 @@ export class Game {
     
     // On instancie la Map (10x15 sur 3 étages)
     this.map = new GameMap(10, 15, 1, 1);
-    host.playerGameId = 1; // Premier joueur
+    host.gameId = 1; // Premier joueur
     this.players.push(host);
     this.turn = host; 
   }
 
   addPlayer(player: Player) {
     if (this.players.length >= 2) throw new Error("Partie pleine !");
-    player.playerGameId = 2; // Deuxième joueur
+    player.gameId = 2; // Deuxième joueur
     this.players.push(player);
   }
 
