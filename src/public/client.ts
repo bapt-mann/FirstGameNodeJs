@@ -393,7 +393,7 @@ function onCellClick(tile: Tile): any {
     );
 
     // Gestion Sélection / Désélection
-    
+
     // On clique sur une de NOS unités
     if (unitOnCell && unitOnCell.ownerDbId === myUserId) {
         console.log("🧙 unité sélectionnée:", unitOnCell.id);

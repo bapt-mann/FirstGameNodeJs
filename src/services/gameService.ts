@@ -2,6 +2,7 @@ import db from "../config/db";
 import { RowDataPacket } from "mysql2";
 import { Game } from "../models/Game";
 import { Tile } from "../models/Tile";
+import { log } from "node:console";
 
 // =========================================================
 // 1. PARTIE BDD : GESTION DES PERSONNAGES
@@ -83,21 +84,34 @@ export function automaticPlaceUnit(game: Game) {
 }
 
 export function moveUnit(game: Game, unitId: string, targetTile: Tile, playerId: number) {
+    console.log(`Tentative de déplacement de l'unité ${unitId} vers (${targetTile.x}, ${targetTile.y}) par le joueur ${playerId}`);
     const unit = game.units.find(u => u.id === unitId);
 
     // 1. Vérifications de base
-    if (!unit) throw new Error("Unité introuvable");
-    if (unit.ownerGameId !== playerId) throw new Error("Ce n'est pas votre unité !");
-    
+    if (!unit) {
+        console.log("Unité introuvable !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
+        return game;
+    }
+    if (unit.ownerDbId !== playerId) {
+        console.log("Ce n'est pas votre unité !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
+        return game;
+    }
+
     // (Tu pourras ajouter ici la logique de 'hasMoved' plus tard)
-    // if (unit.hasMoved) throw new Error("Cette unité a déjà bougé.");
+    // if (unit.hasMoved) console.log("Cette unité a déjà bougé.");
     
     // 2. Vérifier la distance 
     const distance = Math.abs(unit.position.x - targetTile.x) + Math.abs(unit.position.y - targetTile.y);
-    if (distance > unit.moveRange) throw new Error("Trop loin !");
+    if (distance > unit.moveRange) {
+        console.log("Trop loin !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
+        return game;
+    }
 
     // 3. Vérifier si la case est occupée
-    if (!game.isCellFree(targetTile)) throw new Error("Case occupée !");
+    if (!game.isCellFree(targetTile)) {
+        console.log("Case occupée !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
+        return game;
+    }
     // 4. Appliquer le mouvement
     unit.position.x = targetTile.x;
     unit.position.y = targetTile.y;
