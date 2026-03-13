@@ -214,7 +214,7 @@ export default function setupSocket(io: Server) {
                 const updatedGame = moveUnit(game, data.unitId, data.tile, myUserId!);
                 
                 // On envoie la mise à jour à tout le monde DANS LA ROOM (via le code)
-                socket.emit('update_game', updatedGame);
+                io.to(currentRoomCode).emit('update_game', updatedGame);
             } catch (e: any) {
                 socket.emit('error_message', e.message);
             }
