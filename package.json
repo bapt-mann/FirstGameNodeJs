@@ -4,9 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node server.ts",
+    "dev": "ts-node src/server.ts",
     "build:server": "tsc",
-    "build:client": "tsc -p public/tsconfig.json",
+    "build:client": "tsc -p src/public/tsconfig.json",
     "build": "npm run build:server && npm run build:client",
     "start": "node dist/server.js"
   },
@@ -14,11 +14,14 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mysql2": "^3.15.3",
     "socket.io": "^4.8.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.6",
     "@types/node": "^25.0.0",
     "@types/socket.io": "^3.0.1",
