@@ -2,23 +2,17 @@ import db from "../config/db";
 import { RowDataPacket } from "mysql2";
 import { Game } from "../models/Game";
 import { Tile } from "../models/Tile";
-import { log } from "node:console";
 
 // =========================================================
-// 1. PARTIE BDD : GESTION DES PERSONNAGES
+// 1. BDD — GESTION DES PERSONNAGES
 // =========================================================
 
-// Récupérer tous les persos disponibles
 export async function getAllCharacters() {
-    const [rows] = await db.promise().query<RowDataPacket[]>(
-        "SELECT * FROM characters"
-    );
+    const [rows] = await db.promise().query<RowDataPacket[]>("SELECT * FROM characters");
     return rows;
 }
 
-// Gérer la sélection (Click sur une carte)
 export async function toggleCharacterSelection(roomDbId: number, userId: number, charId: number) {
-    // 1. On regarde ce qu'il a déjà choisi
     const [currentSelection] = await db.promise().query<RowDataPacket[]>(
         "SELECT character_id FROM room_team_selection WHERE room_id = ? AND user_id = ?",
         [roomDbId, userId]
@@ -27,96 +21,69 @@ export async function toggleCharacterSelection(roomDbId: number, userId: number,
     const isSelected = currentSelection.some(row => row.character_id === charId);
 
     if (isSelected) {
-        // SI DÉJÀ LÀ : On supprime
         await db.promise().query(
             "DELETE FROM room_team_selection WHERE room_id = ? AND user_id = ? AND character_id = ?",
             [roomDbId, userId, charId]
         );
     } else {
-        // SI PAS LÀ : On vérifie la limite (3 max)
-        if (currentSelection.length >= 3) {
-            throw new Error("Ton équipe est complète (3 max) !");
-        }
-        // On ajoute
+        if (currentSelection.length >= 3) throw new Error("Ton équipe est complète (3 max) !");
         await db.promise().query(
             "INSERT INTO room_team_selection (room_id, user_id, character_id) VALUES (?, ?, ?)",
             [roomDbId, userId, charId]
         );
     }
 
-    // On renvoie la nouvelle liste d'IDs mise à jour
     const [newSelection] = await db.promise().query<RowDataPacket[]>(
         "SELECT character_id FROM room_team_selection WHERE room_id = ? AND user_id = ?",
         [roomDbId, userId]
     );
-    
     return newSelection.map(row => row.character_id);
 }
 
-export async function getSelectedCharacters(roomDbId: number, userDbId: number) {
+export async function getSelectedCharacters(roomDbId: number, userId: number) {
     const [rows] = await db.promise().query<RowDataPacket[]>(
         "SELECT character_id FROM room_team_selection WHERE room_id = ? AND user_id = ?",
-        [roomDbId, userDbId]
+        [roomDbId, userId]
     );
     return rows.map(row => row.character_id);
 }
 
 // =========================================================
-// 2. PARTIE JEU : LOGIQUE TACTIQUE (MÉMOIRE)
+// 2. LOGIQUE DE JEU (mémoire)
 // =========================================================
 
-// Placement initial des unités
+// Placement automatique au début de la partie
 export function automaticPlaceUnit(game: Game) {
-    // On place les unités du Joueur 1 en bas à gauche
-    let posJ1: number = 0;
-    // On place les unités du Joueur 2 en haut à droite
-    let posJ2: number = 0;
+    let slotJ1 = 0;
+    let slotJ2 = 0;
+
     game.units.forEach(u => {
-        if (u.ownerGameId === 1) {
-            u.position = {x: posJ1, y: 0, z: 0};
-            posJ1++;
-        }
-        else if (u.ownerGameId === 2) {
-            u.position = { x: posJ2, y: game.map.height - 1, z: 0};
-            posJ2++;
+        if (u.ownerTeamSlot === 1) {
+            u.position = { x: slotJ1, y: 0, z: 0 };
+            slotJ1++;
+        } else if (u.ownerTeamSlot === 2) {
+            u.position = { x: slotJ2, y: game.map.height - 1, z: 0 };
+            slotJ2++;
         }
     });
 }
 
-export function moveUnit(game: Game, unitId: string, targetTile: Tile, playerId: number) {
-    console.log(`Tentative de déplacement de l'unité ${unitId} vers (${targetTile.x}, ${targetTile.y}) par le joueur ${playerId}`);
+// Déplacement d'une unité
+export function moveUnit(game: Game, unitId: string, targetTile: Tile, userId: number): Game {
     const unit = game.units.find(u => u.id === unitId);
 
-    // 1. Vérifications de base
-    if (!unit) {
-        console.log("Unité introuvable !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
-        return game;
-    }
-    if (unit.ownerDbId !== playerId) {
-        console.log("Ce n'est pas votre unité !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
-        return game;
-    }
+    if (!unit)                        throw new Error("Unité introuvable.");
+    if (unit.ownerId !== userId)      throw new Error("Ce n'est pas ton unité !");
 
-    // (Tu pourras ajouter ici la logique de 'hasMoved' plus tard)
-    // if (unit.hasMoved) console.log("Cette unité a déjà bougé.");
-    
-    // 2. Vérifier la distance 
-    const distance = Math.abs(unit.position.x - targetTile.x) + Math.abs(unit.position.y - targetTile.y);
-    if (distance > unit.moveRange) {
-        console.log("Trop loin !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
-        return game;
-    }
+    const distance = Math.abs(unit.position.x - targetTile.x)
+                   + Math.abs(unit.position.y - targetTile.y);
 
-    // 3. Vérifier si la case est occupée
-    if (!game.isCellFree(targetTile)) {
-        console.log("Case occupée !"); // Pour l'instant, on laisse passer, mais tu pourras bloquer plus tard
-        return game;
-    }
-    // 4. Appliquer le mouvement
+    if (distance > unit.moveRange)    throw new Error(`Trop loin ! (distance: ${distance}, portée: ${unit.moveRange})`);
+    if (!game.isCellFree(targetTile)) throw new Error("Case occupée ou non accessible.");
+
     unit.position.x = targetTile.x;
     unit.position.y = targetTile.y;
     unit.position.z = targetTile.floorZ;
-    // unit.hasMoved = true; 
 
-    return game; // On renvoie l'état mis à jour
+    return game;
 }

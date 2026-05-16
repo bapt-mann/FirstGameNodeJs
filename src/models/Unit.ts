@@ -1,39 +1,47 @@
-// src/models/Unit.ts
-import { Position } from "./Types"
-
+import { Position } from "./Types";
 
 export class Unit {
-  id: string;        // Unique ID de l'unité
-  name: string;      // "Marth", "Ike"...
-  ownerDbId: number;   // À quel joueur (DB) appartient ce pion
-  ownerGameId: number;   // À quel joueur appartient ce pion
+    id: string;       // Identifiant unique de l'unité sur le plateau (ex: "1_5_Guerrier")
+    name: string;     // Nom du personnage (ex: "Guerrier")
 
-  position: Position;
-  
-  // Stats Fire Emblem basiques
-  hp: number;
-  maxHp: number;
-  atk: number;
-  def: number;
-  moveRange: number;
-  range: number;
-  
-  hasMoved: boolean; // Pour savoir s'il a déjà joué ce tour
+    // Propriétaire
+    ownerId: number;       // userId MySQL du joueur propriétaire (ex: 42)
+    ownerTeamSlot: number; // Camp du propriétaire dans la partie : 1 ou 2
 
-  constructor(id: string, name: string, ownerDbId: number, ownerGameId: number, x: number, y: number, z: number) {
-    this.id = id;
-    this.name = name;
-    this.ownerDbId = ownerDbId;
-    this.ownerGameId = ownerGameId;
+    position: Position;
 
-    this.position = { x, y, z };
+    // Stats
+    hp: number;
+    maxHp: number;
+    atk: number;
+    def: number;
+    moveRange: number;
+    range: number;
 
-    this.hp = 20;
-    this.maxHp = 20;
-    this.atk = 8;
-    this.def = 3;
-    this.moveRange = 4;
-    this.range = 1;
-    this.hasMoved = false;
-  }
+    hasMoved: boolean; // true si l'unité a déjà agi ce tour
+
+    constructor(
+        id: string,
+        name: string,
+        ownerId: number,
+        ownerTeamSlot: number,
+        x: number,
+        y: number,
+        z: number
+    ) {
+        this.id            = id;
+        this.name          = name;
+        this.ownerId       = ownerId;
+        this.ownerTeamSlot = ownerTeamSlot;
+
+        this.position = { x, y, z };
+
+        this.hp        = 20;
+        this.maxHp     = 20;
+        this.atk       = 8;
+        this.def       = 3;
+        this.moveRange = 4;
+        this.range     = 1;
+        this.hasMoved  = false;
+    }
 }
