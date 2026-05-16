@@ -1,66 +1,188 @@
 declare var io: any;
 const socket = io();
 
+// ================================================================
+// TYPES
+// ================================================================
+
 enum TileType {
-  GRASS = 'GRASS',
-  WALL = 'WALL',
-  WATER = 'WATER',
-  STAIRS_UP = 'STAIRS_UP',
-  STAIRS_DOWN = 'STAIRS_DOWN'
+    GRASS      = 'GRASS',
+    WALL       = 'WALL',
+    WATER      = 'WATER',
+    STAIRS_UP  = 'STAIRS_UP',
+    STAIRS_DOWN = 'STAIRS_DOWN'
 }
 
 interface Tile {
-  type: TileType;
-  isWalkable: boolean;
-  x: number;
-  y: number;
-  floorZ: number;
+    type: TileType;
+    isWalkable: boolean;
+    x: number;
+    y: number;
+    floorZ: number;
 }
 
+// ================================================================
+// ÉTAT GLOBAL
+// ================================================================
+
 let myUserId: number | null = null;
-let currentTeam: number[] = [];
+let currentTeam: number[]   = [];
+let viewingFloor             = 0;
+let gameData: any            = null;
+let selectedTile: Tile | null     = null;
+let selectedUnitId: string | null = null;
 
-// Variable pour savoir quel étage on regarde (Caméra)
-let viewingFloor = 0; 
-let gameData: any = null; // Stockera les données reçues du serveur
-let selectedTile: Tile | null = null;
-let selectedUnitId: number | null = null;
+// ================================================================
+// ÉLÉMENTS DOM
+// ================================================================
 
-//#region Éléments du DOM
 const screens = {
     login: document.getElementById('screen-login')!,
-    menu: document.getElementById('screen-menu')!,
+    menu:  document.getElementById('screen-menu')!,
     lobby: document.getElementById('screen-lobby')!,
-    game: document.getElementById('game-ui')! // Écran de jeu
+    game:  document.getElementById('game-ui')!
 };
 
 const inputs = {
-    pseudo: document.getElementById('pseudo-input') as HTMLInputElement,
-    code: document.getElementById('code-input') as HTMLInputElement
+    pseudo:   document.getElementById('pseudo-input')   as HTMLInputElement,
+    password: document.getElementById('password-input') as HTMLInputElement,
+    code:     document.getElementById('code-input')     as HTMLInputElement
 };
 
-// Fonction pour changer d'écran
+const loginError = document.getElementById('login-error')!;
+
 function showScreen(screenName: 'login' | 'menu' | 'lobby' | 'game') {
     Object.values(screens).forEach(s => s.classList.remove('active'));
     screens[screenName].classList.add('active');
 }
-//#endregion
 
-//#region  --- LOGIQUE LOGIN ---
+function showLoginError(msg: string) {
+    loginError.textContent = msg;
+    loginError.style.display = 'block';
+}
+
+function clearLoginError() {
+    loginError.textContent = '';
+    loginError.style.display = 'none';
+}
+
+// ================================================================
+// MODE DÉVELOPPEUR
+// ================================================================
+
+const urlParams  = new URLSearchParams(window.location.search);
+const devPlayer  = urlParams.get('dev'); // '1' ou '2' ou null
+
+async function initDevMode() {
+    if (!devPlayer) return;
+
+    // Récupérer la config serveur
+    const res    = await fetch('/api/config');
+    const config = await res.json();
+
+    if (!config.devMode) {
+        console.warn('DEV_MODE désactivé côté serveur, paramètre ?dev ignoré.');
+        return;
+    }
+
+    // Afficher le badge dev sur l'écran de login
+    const badge = document.getElementById('dev-badge');
+    if (badge) badge.style.display = 'block';
+
+    const pseudo   = devPlayer === '1' ? config.devUsers.player1 : config.devUsers.player2;
+    const password = config.devUsers.password;
+
+    console.log(`🛠️  Dev mode — connexion automatique en tant que "${pseudo}"`);
+
+    // Pré-remplir les champs (utile si auto-login échoue et que l'utilisateur doit reclicker)
+    inputs.pseudo.value   = pseudo;
+    inputs.password.value = password;
+
+    // Auto-login
+    socket.emit('login', { pseudo, password });
+}
+
+// Lancer le mode dev au chargement
+initDevMode();
+
+// ================================================================
+// LOGIN
+// ================================================================
+
 document.getElementById('btn-login')?.addEventListener('click', () => {
-    const pseudo = inputs.pseudo.value;
-    if (pseudo) socket.emit('login', pseudo);
+    clearLoginError();
+    const pseudo   = inputs.pseudo.value.trim();
+    const password = inputs.password.value.trim();
+
+    if (!pseudo || pseudo.length < 2) {
+        return showLoginError("Le pseudo doit faire au moins 2 caractères.");
+    }
+    if (!password || password.length < 4) {
+        return showLoginError("Le mot de passe doit faire au moins 4 caractères.");
+    }
+
+    socket.emit('login', { pseudo, password });
 });
 
-socket.on('login_success', (user: any) => {
+// Permettre la soumission avec Entrée
+inputs.password?.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === 'Enter') document.getElementById('btn-login')?.click();
+});
+
+socket.on('login_success', async (user: any) => {
     myUserId = user.id;
-    document.getElementById('welcome-msg')!.textContent = `Bonjour ${user.pseudo}`;
-    console.log("Login réussi, mon ID est", myUserId);
+    document.getElementById('welcome-msg')!.textContent = `Bonjour ${user.pseudo} !`;
+    clearLoginError();
+    console.log("✅ Login réussi, mon ID est", myUserId);
     showScreen('menu');
-});
-//#endregion
 
-//#region  --- LOGIQUE CRÉATION ---
+    // ── AUTO-ROOM en mode dev ──────────────────────────────────────
+    if (!devPlayer) return;
+
+    if (devPlayer === '1') {
+        // Joueur 1 : crée la room
+        console.log('🛠️  Dev — création automatique de la room...');
+        socket.emit('create_room');
+
+    } else if (devPlayer === '2') {
+        // Joueur 2 : attend que la room existe et la rejoint
+        console.log('🛠️  Dev — recherche de la room dev...');
+        await autoJoinDevRoom();
+    }
+});
+
+socket.on('login_error', (msg: string) => {
+    showLoginError(msg);
+});
+
+// ================================================================
+// AUTO-JOIN (dev=2)
+// Interroge /api/dev/room jusqu'à ce qu'une room soit disponible
+// ================================================================
+
+async function autoJoinDevRoom(attempts = 0) {
+    if (attempts > 15) {
+        console.warn('🛠️  Dev — Aucune room dev trouvée après 15 essais. Lance d\'abord ?dev=1.');
+        showLoginError('Aucune room dev disponible. Lance d\'abord l\'onglet ?dev=1.');
+        return;
+    }
+
+    const res  = await fetch('/api/dev/room');
+    const data = await res.json();
+
+    if (data.code) {
+        console.log(`🛠️  Dev — Rejoindre la room ${data.code}`);
+        socket.emit('join_room', data.code);
+    } else {
+        // Pas encore de room, on réessaie dans 1 seconde
+        setTimeout(() => autoJoinDevRoom(attempts + 1), 1000);
+    }
+}
+
+// ================================================================
+// CRÉATION DE ROOM
+// ================================================================
+
 document.getElementById('btn-create')?.addEventListener('click', () => {
     socket.emit('create_room');
 });
@@ -68,13 +190,14 @@ document.getElementById('btn-create')?.addEventListener('click', () => {
 socket.on('room_created', (code: string) => {
     document.getElementById('display-code')!.textContent = code;
     showScreen('lobby');
-    // On s'ajoute nous-même à la liste visuelle
     addLog(`Vous avez créé la room ${code}`);
     socket.emit('get_characters');
 });
-//#endregion
 
-//#region  --- LOGIQUE REJOINDRE ---
+// ================================================================
+// REJOINDRE UNE ROOM
+// ================================================================
+
 document.getElementById('btn-join')?.addEventListener('click', () => {
     const code = inputs.code.value.toUpperCase();
     if (code) socket.emit('join_room', code);
@@ -86,94 +209,78 @@ socket.on('room_joined', (code: string) => {
     addLog(`Vous avez rejoint la room ${code}`);
     socket.emit('get_characters');
 });
-//#endregion
 
-//#region  --- ÉVÉNEMENTS LOBBY ---
+// ================================================================
+// LOBBY
+// ================================================================
+
 socket.on('player_arrived', (pseudo: string) => {
     addLog(`👋 ${pseudo} a rejoint la partie !`);
 });
-//#endregion
 
-//#region  Gérer la reconnexion automatique
 socket.on('reconnect_room', (data: any) => {
-    console.log("Reconnexion à la room " + data.code);
-    
-    // 1. Mettre à jour l'affichage du code
+    console.log("🔄 Reconnexion à la room " + data.code);
     document.getElementById('display-code')!.textContent = data.code;
-    
-    // 2. Afficher le bon écran
     showScreen('lobby');
-    
-    // 3. Demander l'état actuel (les persos, etc.)
     socket.emit('get_characters');
-    // Ici, plus tard, on demandera aussi "get_game_state" si la partie a commencé
 });
 
 socket.on('error_msg', (msg: string) => {
     alert("Erreur : " + msg);
 });
-//#endregion
 
-//#region  Helper pour afficher dans la liste
 function addLog(text: string) {
     const li = document.createElement('li');
     li.textContent = text;
     document.getElementById('players-list')?.appendChild(li);
 }
 
+// ================================================================
+// SÉLECTION DES PERSONNAGES
+// ================================================================
+
 socket.on('list_characters', (chars: any[]) => {
     const container = document.getElementById('characters-container')!;
-    container.innerHTML = ""; // On vide
+    container.innerHTML = "";
 
     chars.forEach(c => {
         const div = document.createElement('div');
-        div.className = 'char-card';
-        div.dataset.id = c.id; // On stocke l'ID dans le HTML
-        div.innerHTML = `
+        div.className    = 'char-card';
+        div.dataset.id   = c.id;
+        div.innerHTML    = `
             <strong>${c.name}</strong><br>
             <small>PV: ${c.base_hp} / ATK: ${c.base_atk}</small>
         `;
-        
-        // Clic sur la carte
-        div.addEventListener('click', () => {
-            console.log("Clic sur perso ID", c.id);
-            socket.emit('toggle_char', c.id);
-        });
-
+        div.addEventListener('click', () => socket.emit('toggle_char', c.id));
         container.appendChild(div);
     });
 });
 
 socket.on('team_update', (teamIds: number[]) => {
     currentTeam = teamIds;
-    console.log("Équipe mise à jour :", teamIds);
-    
-    // On met à jour les bordures
+
     document.querySelectorAll('.char-card').forEach((div: any) => {
         const id = parseInt(div.dataset.id);
-        if (teamIds.includes(id)) {
-            div.classList.add('selected');
-        } else {
-            div.classList.remove('selected');
-        }
+        div.classList.toggle('selected', teamIds.includes(id));
     });
 
-    // Gestion du bouton PRÊT
     const btnReady = document.getElementById('btn-ready') as HTMLButtonElement;
     if (teamIds.length === 3) {
-        btnReady.disabled = false;
-        btnReady.textContent = "JE SUIS PRÊT !";
+        btnReady.disabled         = false;
+        btnReady.textContent      = "JE SUIS PRÊT !";
         btnReady.style.backgroundColor = "#4CAF50";
-        btnReady.style.color = "white";
+        btnReady.style.color      = "white";
     } else {
-        btnReady.disabled = true;
-        btnReady.textContent = `Choisis encore ${3 - teamIds.length} persos`;
+        btnReady.disabled         = true;
+        btnReady.textContent      = `Choisis encore ${3 - teamIds.length} perso(s)`;
         btnReady.style.backgroundColor = "";
     }
 });
-//#endregion
 
-//#region  LEAVE ROOM LOGIC
+// ================================================================
+// QUITTER LA ROOM
+// ================================================================
+
 document.getElementById('btn-leave')?.addEventListener('click', () => {
     if (confirm("Voulez-vous vraiment quitter ?")) {
         socket.emit('leave_room');
@@ -181,31 +288,29 @@ document.getElementById('btn-leave')?.addEventListener('click', () => {
 });
 
 socket.on('left_success', () => {
-    // On nettoie l'interface
-    document.getElementById('players-list')!.innerHTML = "";
+    document.getElementById('players-list')!.innerHTML      = "";
     document.getElementById('characters-container')!.innerHTML = "";
-    // Retour au menu
     showScreen('menu');
 });
 
 socket.on('player_left', (pseudo: string) => {
     addLog(`👋 ${pseudo} est parti.`);
-    // recharger la liste des joueurs ici si tu veux
 });
 
 socket.on('room_closed', (reason: string) => {
     alert(reason);
     showScreen('menu');
 });
-//#endregion
 
-//#region  READY BUTTON LOGIC
+// ================================================================
+// PRÊT
+// ================================================================
+
 document.getElementById('btn-ready')?.addEventListener('click', () => {
     socket.emit('player_ready', currentTeam);
-    // On grise le bouton
     const btn = document.getElementById('btn-ready') as HTMLButtonElement;
-    btn.disabled = true;
-    btn.textContent = "En attente de l'adversaire...";
+    btn.disabled              = true;
+    btn.textContent           = "En attente de l'adversaire...";
     btn.style.backgroundColor = "orange";
 });
 
@@ -214,65 +319,40 @@ socket.on('opponent_ready', (pseudo: string) => {
 });
 
 socket.on('game_start', (game: any) => {
-    console.log("LA PARTIE COMMENCE !", game);
+    console.log("🎮 LA PARTIE COMMENCE !", game);
     gameData = game;
-    // C'est ici qu'on change d'écran automatiquement
     showScreen('game');
     renderMap();
 });
-//#endregion
 
-
-//#region  --- LOGIQUE DE JEU ---
+// ================================================================
+// RENDU DE LA MAP
+// ================================================================
 
 function updateFloorDisplay() {
     const displaySpan = document.getElementById('current-floor-display');
     if (!displaySpan) return;
 
-    let text = "";
-    if (viewingFloor === 0) {
-        text = "Rez-de-chaussée";
-    } else if (viewingFloor > 0) {
-        text = `Étage ${viewingFloor}`;
-    } else {
-        text = `Sous-sol ${Math.abs(viewingFloor)}`;
-    }
+    if (viewingFloor === 0)        displaySpan.innerText = "Rez-de-chaussée";
+    else if (viewingFloor > 0)     displaySpan.innerText = `Étage ${viewingFloor}`;
+    else                           displaySpan.innerText = `Sous-sol ${Math.abs(viewingFloor)}`;
 
-    displaySpan.innerText = text;
-
-    // BONUS : Griser les boutons si on ne peut plus bouger
-    const btnUp = document.getElementById('btn-floor-up') as HTMLButtonElement;
-    const btnDown = document.getElementById('btn-floor-down') as HTMLButtonElement;
-
-    if (gameData && gameData.map) {
-        // Désactive le bouton UP si on est au max
-        btnUp.disabled = (viewingFloor >= gameData.map.maxZ);
-        // Désactive le bouton DOWN si on est au min
-        btnDown.disabled = (viewingFloor <= gameData.map.minZ);
+    if (gameData?.map) {
+        (document.getElementById('btn-floor-up')   as HTMLButtonElement).disabled = viewingFloor >= gameData.map.maxZ;
+        (document.getElementById('btn-floor-down') as HTMLButtonElement).disabled = viewingFloor <= gameData.map.minZ;
     }
 }
 
-// Bouton MONTER (UP)
 document.getElementById('btn-floor-up')?.addEventListener('click', () => {
-    // SÉCURITÉ : On vérifie que gameData est chargé
-    if (!gameData || !gameData.map) return;
-
-    // LOGIQUE : Si l'étage actuel est plus petit que le max, on monte
-    if (viewingFloor < gameData.map.maxZ) {
-        viewingFloor++;
-        renderMap();
-    }
+    if (!gameData?.map || viewingFloor >= gameData.map.maxZ) return;
+    viewingFloor++;
+    renderMap();
 });
 
-// Bouton DESCENDRE (DOWN)
 document.getElementById('btn-floor-down')?.addEventListener('click', () => {
-    if (!gameData || !gameData.map) return;
-
-    // LOGIQUE : Si l'étage actuel est plus grand que le min (ex: -1), on descend
-    if (viewingFloor > gameData.map.minZ) {
-        viewingFloor--;
-        renderMap();
-    }
+    if (!gameData?.map || viewingFloor <= gameData.map.minZ) return;
+    viewingFloor--;
+    renderMap();
 });
 
 socket.on('update_game', (game: any) => {
@@ -287,155 +367,100 @@ socket.on('first_placement', (game: any) => {
 });
 
 function renderMap() {
-    console.log("Données reçues :", gameData);
     const board = document.getElementById('game-board')!;
     board.innerHTML = '';
 
-    // SÉCURITÉ : Vérifier si les données sont bien là
-    if (!gameData || !gameData.map || !gameData.map.floors) {
-        console.error("Données de map invalides ou incomplètes", gameData);
+    if (!gameData?.map?.floors) {
+        console.error("Données de map invalides", gameData);
         return;
     }
-
-    // RÉCUPÉRATION DE LA GRILLE
 
     const floorMap = gameData.map.floors[viewingFloor.toString()];
-
     if (!floorMap) {
-        console.error(`Étage ${viewingFloor} introuvable dans les données`, gameData.map.floors);
+        console.error(`Étage ${viewingFloor} introuvable`, gameData.map.floors);
         return;
     }
 
-    // On utilise les dimensions dynamiques envoyées par le serveur
-    const height = gameData.map.height; 
-    const width = gameData.map.width;
-    // CONFIGURER LA GRILLE CSS
-    const cellSize = 50; // Taille fixe des cellules en pixels
+    const { height, width } = gameData.map;
+    const cellSize = 50;
     board.style.gridTemplateColumns = `repeat(${width}, ${cellSize}px)`;
-    board.style.gridTemplateRows = `repeat(${height}, ${cellSize}px)`;
+    board.style.gridTemplateRows    = `repeat(${height}, ${cellSize}px)`;
 
-    // DESSINER LA GRILLE
     for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-            
             const cellData = floorMap.grid[y][x];
-            const cellDiv = document.createElement('div');
+            const cellDiv  = document.createElement('div');
             cellDiv.className = 'cell';
 
-            if (selectedTile && x === selectedTile.x && y === selectedTile.y && viewingFloor === selectedTile.floorZ) {
+            if (selectedTile?.x === x && selectedTile?.y === y && selectedTile?.floorZ === viewingFloor) {
                 cellDiv.classList.add('selected');
             }
 
-            // Styles du terrain
-            if (cellData.type === TileType.WALL) cellDiv.classList.add('wall');
-            if (cellData.type === TileType.WATER) cellDiv.classList.add('water');
-            if (cellData.type === TileType.GRASS) cellDiv.classList.add('grass');
-            if (cellData.type === TileType.STAIRS_UP) cellDiv.classList.add('stairs-up');
-            if (cellData.type === TileType.STAIRS_DOWN) cellDiv.classList.add('stairs-down');
+            // Terrain
+            const typeClass: Record<string, string> = {
+                [TileType.WALL]:        'wall',
+                [TileType.WATER]:       'water',
+                [TileType.GRASS]:       'grass',
+                [TileType.STAIRS_UP]:   'stairs-up',
+                [TileType.STAIRS_DOWN]: 'stairs-down',
+            };
+            if (typeClass[cellData.type]) cellDiv.classList.add(typeClass[cellData.type]);
 
-            // --- GESTION DES UNITÉS ---
-            // On cherche une unité à ces coordonnées X, Y, Z
-            
-            const unit = gameData.units.find((u: any) => 
-                Number(u.position.x) === Number(x) && 
-                Number(u.position.y) === Number(y) && 
-                Number(u.position.z) === Number(viewingFloor)
+            // Unité sur cette case ?
+            const unit = gameData.units.find((u: any) =>
+                Number(u.position.x) === x &&
+                Number(u.position.y) === y &&
+                Number(u.position.z) === viewingFloor
             );
 
             if (unit) {
                 cellDiv.classList.add('has-unit');
                 const unitDiv = document.createElement('div');
                 unitDiv.className = 'unit';
-                // Couleur : Bleu si c'est moi, Rouge si c'est l'autre
-                unitDiv.classList.add(unit.ownerDbId === myUserId ? 'me' : 'enemy');
-                
-                // Si cette unité est celle qu'on a sélectionnée, on ajoute un effet visuel
-                if (selectedUnitId === unit.id) {
-                    unitDiv.classList.add('selected-unit');
-                }
-
+                unitDiv.classList.add(unit.ownerId === myUserId ? 'me' : 'enemy');
+                if (selectedUnitId === unit.id) unitDiv.classList.add('selected-unit');
                 cellDiv.appendChild(unitDiv);
             }
 
-            // Gestion de l'événement de Clic sur la div de la cellule
-            let drawingTile: Tile = { x, y, floorZ: viewingFloor, isWalkable: cellData.isWalkable, type: cellData.type };
-            cellDiv.addEventListener('click', () => onCellClick(drawingTile));
-
+            const tile: Tile = { x, y, floorZ: viewingFloor, isWalkable: cellData.isWalkable, type: cellData.type };
+            cellDiv.addEventListener('click', () => onCellClick(tile));
             board.appendChild(cellDiv);
         }
     }
-    
-    // Mise à jour de l'affichage de l'étage
-    document.getElementById('current-floor-display')!.innerText = (viewingFloor + 1).toString();
+
     updateFloorDisplay();
 }
 
-function onCellClick(tile: Tile): any {
-
-    console.log("🎯 Clic sur Case:", { x: tile.x, y: tile.y, z: viewingFloor });
-    
-    // On affiche juste les positions des unités pour voir si ça correspond
-    const positions = gameData.units.map((u: any) => ({ 
-        id: u.id, 
-        pos: u.position,
-        types: { 
-            x: typeof u.position.x, 
-            clickX: typeof tile.x 
-        } 
-    }));
-    console.table(positions);
-
-    // On cherche l'unité qui serait sur la case cliquée (si elle existe)
-    const unitOnCell = gameData.units.find((u: any) => 
-        Number(u.position.x) === Number(tile.x) && 
-        Number(u.position.y) === Number(tile.y) && 
+function onCellClick(tile: Tile) {
+    const unitOnCell = gameData.units.find((u: any) =>
+        Number(u.position.x) === Number(tile.x) &&
+        Number(u.position.y) === Number(tile.y) &&
         Number(u.position.z) === Number(viewingFloor)
     );
 
-    // Gestion Sélection / Désélection
-
-    // On clique sur une de NOS unités
-    if (unitOnCell && unitOnCell.ownerDbId === myUserId) {
-        console.log("🧙 unité sélectionnée:", unitOnCell.id);
-        // Si c'était déjà elle la sélectionnée, on désélectionne (toggle)
+    if (unitOnCell && unitOnCell.ownerId === myUserId) {
+        // Sélection / désélection de notre unité
         if (selectedUnitId === unitOnCell.id) {
             selectedUnitId = null;
-            selectedTile = null;
+            selectedTile   = null;
         } else {
-            // Sinon, on la sélectionne
             selectedUnitId = unitOnCell.id;
-            selectedTile = tile; // On garde la tile pour l'affichage jaune
+            selectedTile   = tile;
         }
-    } 
-    // On a une unité sélectionnée et on clique sur une case VIDE
-    else if (selectedUnitId && !unitOnCell) {
-        // Logique de mouvement
-        console.log(`Tentative de déplacement de ${selectedUnitId} vers`, tile);
+    } else if (selectedUnitId && !unitOnCell) {
+        // Déplacement vers case vide
         socket.emit('move_unit', { unitId: selectedUnitId, tile });
-        
-        // On nettoie la sélection après l'ordre de mouvement
         selectedUnitId = null;
-        selectedTile = null;
-    }
-    // Clic dans le vide sans sélection (Juste pour sélectionner la case visuellement)
-    else {
-        // Si on reclique sur la même case vide, on désélectionne
-        if (selectedTile && selectedTile.x === tile.x && selectedTile.y === tile.y) {
+        selectedTile   = null;
+    } else {
+        // Sélection d'une case vide (toggle)
+        if (selectedTile?.x === tile.x && selectedTile?.y === tile.y) {
             selectedTile = null;
         } else {
             selectedTile = tile;
         }
-        selectedUnitId = null; // On est sûr qu'on a pas d'unité sélectionnée
+        selectedUnitId = null;
     }
-    console.log("Sélection actuelle:", { selectedUnitId, selectedTile });
-    // On redessine
+
     renderMap();
 }
-
-function first_placement(): any {
-    console.log("Placez vos unités sur le terrain !");
-    gameData.startPlacement()
-    
-}
-
-//#endregion

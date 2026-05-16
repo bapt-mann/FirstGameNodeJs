@@ -1,125 +1,129 @@
 import { Server, Socket } from "socket.io";
+import bcrypt from 'bcryptjs';
 import db from "../config/db";
 import { createRoomInDB, joinRoomByCode } from "../services/roomService";
 import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { getAllCharacters, toggleCharacterSelection, moveUnit, getSelectedCharacters, automaticPlaceUnit } from "../services/gameService";
-import { Debug } from "../models/Debug";
 import { leaveRoomInDB } from "../services/roomService";
-import { gameManager } from "../managers/GameManager"; // Assure-toi que le chemin est bon (G majuscule ?)  
+import { gameManager } from "../managers/GameManager";
 import { Unit } from "../models/Unit";
-import { get } from "node:http";
+import { setDevRoomCode } from "../server";
 
-var path = require('path');
-var scriptName = path.basename(__filename);
+const BCRYPT_ROUNDS = 10;
 
 export default function setupSocket(io: Server) {
 
     io.on("connection", (socket: Socket) => {
-        
-        // --- VARIABLES DE SESSION ---
-        // On se souvient de qui est le joueur et où il se trouve
-        let myUserId: number | null = null;
-        let myUsername: string = "";
-        let currentRoomCode: string | null = null; // Stocke le code de la room actuelle
+
+        // ── Variables de session (propres à cette connexion socket) ──────
+        let myUserId: number | null = null;  // userId MySQL du joueur connecté
+        let myUsername: string      = "";
+        let currentRoomCode: string | null = null;
 
         console.log("Connecté : " + socket.id);
- 
-        // --- 1. LOGIN ---
-        socket.on("login", async (pseudo: string) => {
+
+        // ================================================================
+        // 1. LOGIN
+        // ================================================================
+        socket.on("login", async (data: { pseudo: string; password: string }) => {
             try {
-                // 1. Authentification / Création (Code existant)
+                const pseudo   = (data?.pseudo   || "").trim();
+                const password = (data?.password || "").trim();
+
+                if (!pseudo || pseudo.length < 2)
+                    return socket.emit("login_error", "Le pseudo doit faire au moins 2 caractères.");
+                if (!password || password.length < 4)
+                    return socket.emit("login_error", "Le mot de passe doit faire au moins 4 caractères.");
+
                 const [rows] = await db.promise().query<RowDataPacket[]>(
-                    "SELECT id, username FROM users WHERE username = ?", [pseudo]
+                    "SELECT id, username, password_hash FROM users WHERE username = ?",
+                    [pseudo]
                 );
 
                 if (rows.length > 0) {
-                    myUserId = rows[0].id;
-                    myUsername = rows[0].username;
+                    const user = rows[0];
+
+                    if (!user.password_hash) {
+                        // Ancien compte sans mot de passe — on lui en affecte un
+                        const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+                        await db.promise().query(
+                            "UPDATE users SET password_hash = ? WHERE id = ?",
+                            [hash, user.id]
+                        );
+                    } else {
+                        const valid = await bcrypt.compare(password, user.password_hash);
+                        if (!valid) return socket.emit("login_error", "Mot de passe incorrect.");
+                    }
+
+                    myUserId   = user.id;
+                    myUsername = user.username;
+
                 } else {
+                    const hash = await bcrypt.hash(password, BCRYPT_ROUNDS);
                     const [res] = await db.promise().query<ResultSetHeader>(
-                        "INSERT INTO users (username) VALUES (?)", [pseudo]
+                        "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                        [pseudo, hash]
                     );
-                    myUserId = res.insertId;
+                    myUserId   = res.insertId;
                     myUsername = pseudo;
+                    console.log(`🆕 Nouveau compte : ${pseudo}`);
                 }
 
-                console.log(`${myUsername} est connecté (ID: ${myUserId})`);
+                console.log(`✅ ${myUsername} connecté (userId: ${myUserId})`);
 
-                // ============================================================
-                // 2. NOUVEAU : VÉRIFICATION DE RECONNEXION
-                // ============================================================
-                
-                // On cherche si ce joueur est déjà dans une room active
+                // Vérifier si le joueur était déjà dans une room
                 const [activeRooms] = await db.promise().query<RowDataPacket[]>(
-                    `SELECT r.code, r.id as roomId 
-                    FROM active_room_players arp
-                    JOIN rooms r ON r.id = arp.room_id
-                    WHERE arp.user_id = ? AND (r.status = 'WAITING' OR r.status = 'PLAYING')`,
+                    `SELECT r.code
+                     FROM active_room_players arp
+                     JOIN rooms r ON r.id = arp.room_id
+                     WHERE arp.user_id = ? AND r.status IN ('WAITING', 'PLAYING')`,
                     [myUserId]
                 );
 
                 if (activeRooms.length > 0) {
-                    // --- CAS 1 : LE JOUEUR EST DÉJÀ DANS UNE PARTIE ---
                     const roomCode = activeRooms[0].code;
-                    const roomId = activeRooms[0].roomId;
-
-                    // A. On remet la variable de session
                     currentRoomCode = roomCode;
-
-                    // B. On remet le socket dans le canal Socket.IO
                     socket.join(roomCode);
 
-                    // C. Mise à jour de la mémoire RAM (GameManager)
-                    // C'est CRUCIAL : l'ancien socketId est mort, il faut mettre le nouveau
+                    // Mettre à jour le socketId dans la game en mémoire
                     const game = gameManager.getGame(roomCode);
                     if (game) {
-                        const player = game.players.find(p => p.dbId === myUserId);
-                        if (player) {
-                            player.socketId = socket.id; // Mise à jour de l'ID technique
-                            console.log(`Reconnexion de ${myUsername} dans la room ${roomCode}`);
-                        }
-                    } else {
-                        // Si la game est en BDD mais pas en RAM (ex: Serveur a redémarré)
-                        // On pourrait la recréer ici, mais pour l'instant, on gère l'erreur
-                        // ou on le laisse aller au menu.
+                        const player = game.players.find(p => p.userId === myUserId);
+                        if (player) player.socketId = socket.id;
+                        console.log(`🔄 Reconnexion de ${myUsername} dans la room ${roomCode}`);
                     }
 
-                    // D. On dit au client : "Va direct au lobby !"
                     socket.emit("login_success", { id: myUserId, pseudo: myUsername });
                     socket.emit("reconnect_room", { code: roomCode });
-
-                    // E. On rafraichit les données pour lui (liste des persos choisis, etc.)
-                    // (Tu pourras ajouter l'envoi de l'état du jeu ici plus tard)
-                    
                 } else {
-                    // --- CAS 2 : LE JOUEUR EST LIBRE ---
                     socket.emit("login_success", { id: myUserId, pseudo: myUsername });
                 }
 
             } catch (err) {
                 console.error(err);
-                socket.emit("error_msg", "Erreur lors du login BDD");
+                socket.emit("login_error", "Erreur serveur lors du login.");
             }
         });
 
-        // --- 2. CRÉER UNE ROOM ---
+        // ================================================================
+        // 2. CRÉER UNE ROOM
+        // ================================================================
         socket.on("create_room", async () => {
             if (!myUserId) return socket.emit("error_msg", "Tu dois te connecter d'abord !");
 
             try {
-                // A. Création en BDD
                 const { roomDbId, code } = await createRoomInDB(myUserId);
 
-                // B. Création en Mémoire (RAM) via GameManager
                 gameManager.createGame(code, roomDbId, {
                     socketId: socket.id,
-                    pseudo: myUsername,
-                    dbId: myUserId
+                    pseudo:   myUsername,
+                    userId:   myUserId
                 });
 
-                // C. Socket rejoint le canal
                 socket.join(code);
-                currentRoomCode = code; // On mémorise le code !
+                currentRoomCode = code;
+
+                if (process.env.DEV_MODE === 'true') setDevRoomCode(code);
 
                 socket.emit("room_created", code);
                 console.log(`Room créée : ${code} par ${myUsername}`);
@@ -130,38 +134,29 @@ export default function setupSocket(io: Server) {
             }
         });
 
-        // --- 3. REJOINDRE UNE ROOM ---
+        // ================================================================
+        // 3. REJOINDRE UNE ROOM
+        // ================================================================
         socket.on("join_room", async (code: string) => {
             if (!myUserId) return socket.emit("error_msg", "Tu dois te connecter d'abord !");
 
             try {
-                // A. Validation BDD
                 await joinRoomByCode(myUserId, code);
 
-                // B. Ajout du joueur en Mémoire (RAM)
-                // Attention : joinRoomByCode vérifie déjà si la game existe en BDD
-                // Mais il faut vérifier si elle est chargée en mémoire
                 const game = gameManager.getGame(code);
-                
-                if (game) {
-                    gameManager.addPlayerToGame(code, {
-                        socketId: socket.id,
-                        pseudo: myUsername,
-                        dbId: myUserId
-                    });
-                } else {
-                    // Cas rare : Si le serveur a redémarré entre temps, la game existe en SQL mais pas en RAM.
-                    // Pour l'instant, on renvoie une erreur, on gérera le "rechargement" plus tard.
-                    return socket.emit("error_msg", "Cette partie n'est plus active en mémoire.");
-                }
+                if (!game) return socket.emit("error_msg", "Cette partie n'est plus active en mémoire.");
 
-                // Socket rejoint le canal
+                gameManager.addPlayerToGame(code, {
+                    socketId: socket.id,
+                    pseudo:   myUsername,
+                    userId:   myUserId
+                });
+
                 socket.join(code);
                 currentRoomCode = code;
 
                 socket.emit("room_joined", code);
                 io.to(code).emit("player_arrived", myUsername);
-                
                 console.log(`${myUsername} a rejoint la room ${code}`);
 
             } catch (err: any) {
@@ -169,97 +164,75 @@ export default function setupSocket(io: Server) {
             }
         });
 
-        // --- 4. GESTION PERSONNAGES ---
+        // ================================================================
+        // 4. GESTION PERSONNAGES
+        // ================================================================
         socket.on('get_characters', async () => {
             try {
-                const chars = await getAllCharacters();
-                socket.emit('list_characters', chars);
+                socket.emit('list_characters', await getAllCharacters());
             } catch (e) {
                 console.error(e);
             }
         });
 
-        socket.on('toggle_char', async (charId: number) => {        
-            if (!currentRoomCode || !myUserId) return; // Sécurité
-
+        socket.on('toggle_char', async (charId: number) => {
+            if (!currentRoomCode || !myUserId) return;
             try {
-                // On récupère la game grâce au code stocké dans la variable de session
                 const game = gameManager.getGame(currentRoomCode);
-                
-                if (game) {
-                    // On utilise l'ID BDD stocké dans l'objet Game
-                    const newTeam = await toggleCharacterSelection(game.roomDbId, myUserId, charId);
-                    socket.emit('team_update', newTeam);
-                } else {
-                    socket.emit('error_msg', "Partie introuvable !");
-                }
-                
+                if (!game) return socket.emit('error_msg', "Partie introuvable !");
+                const newTeam = await toggleCharacterSelection(game.roomDbId, myUserId, charId);
+                socket.emit('team_update', newTeam);
             } catch (err: any) {
                 socket.emit('error_msg', err.message);
             }
         });
 
-        // --- 5. GAMEPLAY (Mouvement) ---
-        socket.on('move_unit', (data) => {
-            if (!currentRoomCode) return;
-            
-            const game = gameManager.getGame(currentRoomCode);
+        // ================================================================
+        // 5. GAMEPLAY — MOUVEMENT
+        // ================================================================
+        socket.on('move_unit', (data: { unitId: string; tile: any }) => {
+            if (!currentRoomCode || !myUserId) return;
 
-            if (!game) {
-                return socket.emit('error_message', "Partie non trouvée !");
-            }
+            const game = gameManager.getGame(currentRoomCode);
+            if (!game) return socket.emit('error_message', "Partie non trouvée !");
 
             try {
-                // data contient { unitId, tile }
-                const updatedGame = moveUnit(game, data.unitId, data.tile, myUserId!);
-                
-                // On envoie la mise à jour à tout le monde DANS LA ROOM (via le code)
+                const updatedGame = moveUnit(game, data.unitId, data.tile, myUserId);
                 io.to(currentRoomCode).emit('update_game', updatedGame);
             } catch (e: any) {
                 socket.emit('error_message', e.message);
             }
         });
 
-        // --- 6. DÉCONNEXION ---
+        // ================================================================
+        // 6. DÉCONNEXION
+        // ================================================================
         socket.on("disconnect", () => {
-            console.log("Déconnexion : " + socket.id);
-            // Ici, tu pourras ajouter une logique pour dire "Mario s'est déconnecté" aux autres
+            console.log(`Déconnexion : ${myUsername || socket.id}`);
         });
 
-        // --- 7. QUITTER LA ROOM ---
+        // ================================================================
+        // 7. QUITTER LA ROOM
+        // ================================================================
         socket.on("leave_room", async () => {
             if (!currentRoomCode || !myUserId) return;
 
             try {
-                const code = currentRoomCode;
-                
-                // 1. Nettoyage BDD
+                const code   = currentRoomCode;
                 const result = await leaveRoomInDB(myUserId, code);
 
-                // 2. Nettoyage Mémoire
                 if (result?.action === 'ROOM_DELETED') {
-                    // Si le chef est parti, on supprime tout le jeu en mémoire
                     gameManager.removeGame(code);
-                    
-                    // On prévient tout le monde (même le chef) que c'est fini
+                    if (process.env.DEV_MODE === 'true') setDevRoomCode(null);
                     io.to(code).emit("room_closed", "Le créateur a fermé la room.");
-                    
-                    // On fait quitter le canal Socket à tout le monde
-                    io.in(code).socketsLeave(code); 
-                    
+                    io.in(code).socketsLeave(code);
                 } else {
-                    // Si c'est juste un joueur qui part
                     gameManager.removePlayer(code, myUserId);
-                    
-                    // On le sort du canal
                     socket.leave(code);
-                    socket.emit("left_success"); // Juste pour lui
-                    
-                    // On prévient les autres
+                    socket.emit("left_success");
                     io.to(code).emit("player_left", myUsername);
                 }
 
-                // 3. Reset de la variable locale
                 currentRoomCode = null;
                 console.log(`${myUsername} a quitté la room ${code}`);
 
@@ -268,84 +241,53 @@ export default function setupSocket(io: Server) {
             }
         });
 
-        // --- 8. PRÊT / DÉBUT DE PARTIE ---
+        // ================================================================
+        // 8. PRÊT / DÉBUT DE PARTIE
+        // ================================================================
         socket.on('player_ready', async () => {
-            
-            // 1ère (et unique) vérification
-            if (!currentRoomCode) return; 
+            if (!currentRoomCode) return;
 
-            // On "capture" le code de la room dans une constante locale.
-            // Les constantes locales ne peuvent pas être modifiées de l'extérieur !
-            const roomCode = currentRoomCode; 
-
-            const game = gameManager.getGame(roomCode);
+            const roomCode = currentRoomCode;
+            const game     = gameManager.getGame(roomCode);
             if (!game) return;
 
-            const player = game.players.find(p => p.socketId === socket.id);
-            if (!player) return; // Sécurité si le joueur n'est pas trouvé
+            // On identifie le joueur par son userId (stable, contrairement au socketId)
+            const player = game.players.find(p => p.userId === myUserId);
+            if (!player) return;
 
             try {
-                // Le code s'arrête ici et ATTEND la réponse de la BDD
-                const selectedIds = await getSelectedCharacters(game.roomDbId, player.dbId);
-                
-                // le code reprend ici une fois que la BDD a répondu (avec les IDs des persos choisis) car on a utilisé "await" plus haut
-                
+                const selectedIds = await getSelectedCharacters(game.roomDbId, player.userId);
                 player.selectedCharacterIds = selectedIds;
                 player.isReady = true;
-                
-                // création des unités 
+
                 for (const charId of player.selectedCharacterIds) {
-                    
-                    // Récupérer les stats du personnage (Nom, PV, Atk...)
-                    // Exemple fictif (à adapter avec ton vrai appel BDD ou ta liste en cache) :
-                    // const charData = await db.getCharacterById(charId); 
-                    
-                    // Pour l'exemple, on va dire qu'on a un objet charData :
-                    const charData = { name: "Guerrier", hp: 20, atk: 8 }; // À REMPLACER
+                    const charData = { name: "Guerrier", hp: 20, atk: 8 }; // TODO: stats depuis BDD
 
-                    // Générer un ID unique pour cette unité sur le plateau
-                    // (Utile si un jour tu permets d'avoir 2 "Guerriers" dans la même équipe)
-                    const uniqueUnitId = `${player.gameId}_${charId}_${charData.name}`; // Par exemple : "1_5_Guerrier"
-
-                    // Créer l'objet Unit
+                    const unitId  = `${player.teamSlot}_${charId}_${charData.name}`;
                     const newUnit = new Unit(
-                        uniqueUnitId,
-                        "test", // charData.name, // À REMPLACER
-                        player.dbId, // ID BDD du joueur (propriétaire de l'unité)
-                        player.gameId, // ID de la partie du joueur (1 ou 2)
-                        1, 1, 1 
+                        unitId,
+                        charData.name,
+                        player.userId,      // ownerId
+                        player.teamSlot,    // ownerTeamSlot
+                        1, 1, 1
                     );
-
-                    // Appliquer les vraies stats de la BDD à l'unité
-                    // newUnit.hp = charData.hp;
-                    // newUnit.maxHp = charData.hp;
-                    // newUnit.atk = charData.atk;
-
-                    // L'ajouter au tableau global du jeu
                     game.units.push(newUnit);
                 }
 
-                
-
-                console.log(`Joueur ${player.pseudo} est PRÊT avec ${player.selectedCharacterIds.length} unités.`);
-                
-                // On utilise la constante locale 'roomCode'
+                console.log(`Joueur ${player.pseudo} (slot ${player.teamSlot}) prêt — ${player.selectedCharacterIds.length} unités`);
                 socket.to(roomCode).emit('opponent_ready', player.pseudo);
 
-                // VÉRIFICATION DE LA GAME
                 const allReady = game.players.length === 2 && game.players.every(p => p.isReady);
-
                 if (allReady) {
-                    console.log(`Room ${roomCode} : Tout le monde est prêt ! Lancement...`);
+                    console.log(`Room ${roomCode} : lancement !`);
                     game.status = 'PLAYING';
-                    await automaticPlaceUnit(game); // Place les unités automatiquement pour l'instant
+                    automaticPlaceUnit(game);
                     io.to(roomCode).emit('game_start', game);
                     io.to(roomCode).emit('first_placement', game);
                 }
 
             } catch (err) {
-                // On attrape l'erreur ici au lieu du .catch()
-                console.error("Erreur en récupérant les personnages :", err);
+                console.error("Erreur player_ready :", err);
             }
         });
     });

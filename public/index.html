@@ -7,12 +7,27 @@
 </head>
 <body>
 
+    <!-- ===================== LOGIN ===================== -->
     <div id="screen-login" class="screen active">
         <h1>Bienvenue</h1>
-        <input type="text" id="pseudo-input" placeholder="Ton pseudo">
-        <button id="btn-login">Se Connecter</button>
+
+        <div class="login-form">
+            <input type="text"     id="pseudo-input"   placeholder="Ton pseudo (min. 2 caractères)" autocomplete="username">
+            <input type="password" id="password-input" placeholder="Mot de passe (min. 4 caractères)" autocomplete="current-password">
+            <button id="btn-login">Se Connecter / S'inscrire</button>
+            <p id="login-error" class="error"></p>
+            <p class="login-hint">Première fois ? Entre un pseudo + mdp pour créer ton compte.</p>
+        </div>
+
+        <!-- Badge mode dev (visible uniquement si DEV_MODE=true) -->
+        <div id="dev-badge" style="display:none">
+            🛠️ Mode DEV actif —
+            <a href="?dev=1">Joueur 1</a> |
+            <a href="?dev=2">Joueur 2</a>
+        </div>
     </div>
 
+    <!-- ===================== MENU ===================== -->
     <div id="screen-menu" class="screen">
         <h1 id="welcome-msg">Bonjour</h1>
         <button id="btn-create">Créer une Room</button>
@@ -22,27 +37,25 @@
         <p id="menu-error" class="error"></p>
     </div>
 
+    <!-- ===================== LOBBY ===================== -->
     <div id="screen-lobby" class="screen">
         <h1>Room : <span id="display-code"></span></h1>
         <button id="btn-leave" style="background-color: #e74c3c; margin-bottom: 15px;">QUITTER LA ROOM</button>
         <p class="success">En attente de joueurs...</p>
-        <ul id="players-list">
-        </ul>
+        <ul id="players-list"></ul>
         <hr>
         <h3>Compose ton équipe (Max 3)</h3>
-        <div id="characters-container" class="char-grid">
-            <!-- Les personnages seront ajoutés ici dynamiquement -->
-        </div>
+        <div id="characters-container" class="char-grid"></div>
         <button id="btn-ready" disabled>JE SUIS PRÊT</button>
     </div>
 
+    <!-- ===================== JEU ===================== -->
     <div id="game-ui" class="screen">
         <div class="header">
             <h2>Étage : <span id="current-floor-display">1</span></h2>
             <button id="btn-floor-down">▼</button>
             <button id="btn-floor-up">▲</button>
         </div>
-
         <div id="game-board"></div>
     </div>
 
